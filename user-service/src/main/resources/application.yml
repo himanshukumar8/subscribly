@@ -1,0 +1,52 @@
+server:
+  port: ${PORT:8081}
+  shutdown: graceful
+
+spring:
+  application:
+    name: user-service
+  config:
+    import: "optional:configserver:http://localhost:8888/"
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/users_db}
+    username: ${SPRING_DATASOURCE_USERNAME:subscribly_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:1}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always
+    info:
+      enabled: true
+
+info:
+  app:
+    name: User Service
+    description: Subscribly User & Authentication Microservice
+    version: 1.0.0
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+
+jwt:
+  secret: ${JWT_SECRET:local-development-only-jwt-secret-not-for-prod-32bytes-min!}
+

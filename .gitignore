@@ -31,3 +31,26 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local Environment & Credentials ###
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+!**/.env.example
+
+### Logs & Temp Test Artifacts ###
+*.log
+scratch/
+*.dump
+*.sql.bak
+
+### OS Files ###
+.DS_Store
+Thumbs.db
+
+### Node / Frontend ###
+node_modules/
+dist/
+.npm

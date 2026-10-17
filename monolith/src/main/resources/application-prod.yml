@@ -1,0 +1,42 @@
+# ============================================================================
+# Production Profile Configuration (application-prod.yml)
+# Resolves Hibernate DDL vs Flyway conflicts in deployed environments.
+# Schema evolution is exclusively driven by Flyway versioned migrations;
+# Hibernate verifies entities against DB schema and never mutates DDL.
+# ============================================================================
+
+server:
+  port: ${PORT:8089}
+  forward-headers-strategy: framework
+  error:
+    include-stacktrace: never
+    include-exception: false
+    include-message: never
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/subscribly}
+    username: ${SPRING_DATASOURCE_USERNAME:subscribly_user}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # In deployed/prod, DDL changes are strictly migration-managed
+    show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+jwt:
+  secret: ${JWT_SECRET} # In production, JWT_SECRET must be supplied via environment variable and be >= 256 bits
+
+eureka:
+  client:
+    enabled: false # Standalone monolith deployment operates independently of Eureka registry
+
+

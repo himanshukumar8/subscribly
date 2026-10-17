@@ -33,6 +33,7 @@
         <module>user-service</module>
         <module>notification-service</module>
         <module>subscription-service</module>
+        <module>payment-service</module>
     </modules>
 
     <dependencyManagement>

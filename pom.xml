@@ -26,6 +26,10 @@
 
     <modules>
         <module>monolith</module>
+        <module>discovery-server</module>
+        <module>api-gateway</module>
+        <module>config-server</module>
+        <module>common-lib</module>
     </modules>
 
     <dependencyManagement>

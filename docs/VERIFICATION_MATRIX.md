@@ -102,7 +102,7 @@
 | ID | Method | Path | Auth / Roles | Request Body / Params | Expected Status | Response Fields | DB Side Effects | Automated Tests | Newman Status | Classification |
 | :--- | :--- | :--- | :--- | :--- | :---: | :--- | :--- | :--- | :---: | :--- |
 | `ADM-01` | `GET` | `/api/v1/admin/subscriptions` | Bearer JWT (`ROLE_USER` only) | None | `403 Forbidden` | Access Denied | None | `AdminControllerTest` | `PASS` (Req 30) | **IMPLEMENTED AND VERIFIED** |
-| `ADM-02` | `POST` | `/api/v1/auth/login` | None | Admin credentials (`admin1@example.com`) | `200 OK` | `token` with claim `"roles": ["ROLE_ADMIN"]` | None | `AuthControllerTest` | `PASS` (Req 31) | **IMPLEMENTED AND VERIFIED** |
+| `ADM-02` | `POST` | `/api/v1/auth/login` | None | Admin credentials (`admin1@example.com`) | `200 OK` | `token` with claim `"roles": ["ROLE_ADMIN"]` | Seeds initial admin via AdminBootstrapConfig if absent | `AuthControllerTest` | `PASS` (Req 31) | **DEFECT FOUND AND FIXED** |
 | `ADM-03` | `GET` | `/api/v1/admin/subscriptions` | Bearer JWT (`ROLE_ADMIN`) | None | `200 OK` | `List<SubscriptionResponse>` across all users | None | `AdminControllerTest` | `PASS` (Req 32) | **IMPLEMENTED AND VERIFIED** |
 | `ADM-04` | `GET` | `/api/v1/admin/users` | Bearer JWT (`ROLE_ADMIN`) | None | `200 OK` | `List<UserResponse>` across all users | None | `AdminControllerTest` | `PASS` (Req 33) | **IMPLEMENTED AND VERIFIED** |
 | `ADM-05` | `PUT` | `/api/v1/admin/users/{id}/status` | Bearer JWT (`ROLE_ADMIN`) | Path variable `{id}`, Query param `?status=ACTIVE` | `200 OK` | `UserResponse` with `active: true` | Updates `users.active` | `UserServiceTest` | `PASS` (Req 34) | **IMPLEMENTED AND VERIFIED** |

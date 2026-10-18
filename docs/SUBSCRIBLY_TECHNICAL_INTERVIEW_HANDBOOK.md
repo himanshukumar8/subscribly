@@ -10,7 +10,7 @@
 - **Core Stack:** Java 21 LTS (Azul Zulu 21.0.7), Spring Boot 3.4.3, Spring Cloud 2024.0.0, PostgreSQL 18, React 18, Vite, Tailwind CSS, Docker Compose
 - **Target Audience:** SDE-2 / SDE-3 Backend Engineers, Systems Architects, Technical Interviewers
 - **Target Length:** 55–60 substantive pages (~20,000–25,000 words in standard formatting)
-- **Verified Test Suite:** 201 automated tests across 24 test suites (100% passing, 0 errors, 0 failures)
+- **Verified Test Suite:** 205 automated tests across 24 test suites (100% passing, 0 errors, 0 failures)
 - **Author:** Senior Distributed Systems & Software Engineering Lead
 
 ---
@@ -69,7 +69,7 @@
     - 11.2 Frontend Architecture (React 18 + Vite + Tailwind)
 12. [Testing Strategy, Verification Matrix, and Test Doubles](#chapter-12--testing-strategy-verification-matrix-and-test-doubles)
     - 12.1 The Testing Pyramid in Subscribly
-    - 12.2 Verified Reactor Test Matrix (201 Passed Tests)
+    - 12.2 Verified Reactor Test Matrix (205 Passed Tests)
     - 12.3 Mockito Doubles & Clock Injection
 13. [Reliability, Observability, and Operational Telemetry](#chapter-13--reliability-observability-and-operational-telemetry)
     - 13.1 Correlation IDs Across Distributed Traces
@@ -210,7 +210,7 @@ Subscribly is implemented as a **dual-topology architecture**:
 #### The 2-Minute Elevator Pitch
 > *"Subscribly is a fault-tolerant subscription and recurring billing platform built with Java 21, Spring Boot 3, and PostgreSQL. It solves the critical engineering problems of double-billing, state drift, and race conditions during payment collection. I built it first as a clean modular monolith to establish strict transaction boundaries and automated testing, then decomposed it into distributed microservices connected via Spring Cloud Gateway, Eureka, OpenFeign, and Kafka.*
 >
-> *Its core technical features include a mathematically deterministic subscription lifecycle engine using UTC Instants, a Razorpay gateway provider implementing dual-channel verification (synchronous client-side redirect + raw-payload HMAC-SHA256 webhook ingestion), database-enforced idempotency keys, and optimistic locking to prevent race conditions during concurrent renewals and cancellations. The entire reactor is validated by 201 automated tests across 24 test suites with zero failures."*
+> *Its core technical features include a mathematically deterministic subscription lifecycle engine using UTC Instants, a Razorpay gateway provider implementing dual-channel verification (synchronous client-side redirect + raw-payload HMAC-SHA256 webhook ingestion), database-enforced idempotency keys, and optimistic locking to prevent race conditions during concurrent renewals and cancellations. The entire reactor is validated by 205 automated tests across 24 test suites with zero failures."*
 
 #### The 5-Minute Technical Deep Dive
 > *"When designing Subscribly, I prioritized financial data integrity above all else. Subscription systems live or die by consistency: money cannot be deducted twice, and active subscriptions must never expire prematurely.*
@@ -220,7 +220,7 @@ Subscribly is implemented as a **dual-topology architecture**:
 >
 > *Second, robust concurrency control: Both `Subscription` and `Payment` entities leverage Hibernate `@Version` optimistic locking. If a scheduled renewal batch attempts to charge a subscription while the user initiates a cancellation, one transaction succeeds while the other encounters an `OptimisticLockException` and aborts gracefully, preventing corrupted state.*
 >
-> *Third, architectural pragmatism: I avoided speculative infrastructure like distributed locks or distributed 2PC transactions. Instead, I established clean service boundaries where PostgreSQL acts as the single source of truth, and asynchronous events handle non-critical side effects like notifications. In this iteration, we proved the architecture locally across 201 automated unit and integration tests."*
+> *Third, architectural pragmatism: I avoided speculative infrastructure like distributed locks or distributed 2PC transactions. Instead, I established clean service boundaries where PostgreSQL acts as the single source of truth, and asynchronous events handle non-critical side effects like notifications. In this iteration, we proved the architecture locally across 205 automated unit and integration tests."*
 
 #### The 15-Minute SDE-3 Architectural Interview
 > In a comprehensive senior interview, walk through:
@@ -236,7 +236,7 @@ In technical interviews, claiming a side project is "100% production-ready for m
 
 | Dimension | Implemented & Tested in Repository | Production Hardening Required |
 | :--- | :--- | :--- |
-| **Code Correctness** | 201 passing JUnit 5 tests, clean Maven build across 10 modules. | Distributed fault-injection (Chaos Monkey) under live network latency. |
+| **Code Correctness** | 205 passing JUnit 5 tests, clean Maven build across 10 modules. | Distributed fault-injection (Chaos Monkey) under live network latency. |
 | **Payment Flow** | Razorpay SDK abstraction, order creation, signature check, webhook deduplication. | Live PCI-DSS compliance audits, automated reconciliation cron with banking settlement files. |
 | **Database** | Relational schema, Flyway migrations (V1–V4), B-tree indexes, foreign keys. | Multi-region read replicas, connection pool PgBouncer sidecars, table partitioning. |
 | **Messaging** | Kafka templates configured, event models defined, mocked integration verified. | Multi-broker cluster, consumer group rebalance tuning, dead-letter queue (DLQ) automated replay UI. |
@@ -1405,9 +1405,9 @@ export const triggerRazorpayCheckout = (orderData: OrderResponse, onSuccess: () 
 ### 12.1 The Testing Pyramid in Subscribly
 
 ```mermaid
-pie title Subscribly Test Distribution (201 Automated Tests)
+pie title Subscribly Test Distribution (205 Automated Tests)
     "Monolith Unit & Integration Tests" : 172
-    "Payment Service (Gateway, Webhook HMAC, State Machine)" : 19
+    "Payment Service (Gateway, Webhook HMAC, State Machine)" : 23
     "User Service (JWT, BCrypt, Auth Filters)" : 7
     "Subscription Service (FSM, Expiry Calculations)" : 3
 ```
@@ -1419,7 +1419,7 @@ Subscribly maintains a strict test hierarchy:
 
 ---
 
-### 12.2 Verified Maven Reactor Test Matrix (201 Passed Tests)
+### 12.2 Verified Maven Reactor Test Matrix (205 Passed Tests)
 
 On **October 18, 2026**, the entire Maven reactor was executed with Azul Zulu OpenJDK 21 LTS (`21.0.7`):
 
@@ -1433,17 +1433,17 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 | Module Directory | Artifact ID | Tests Run | Failures | Errors | Skipped | Elapsed Time | Build Status |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| `.` (Root) | `subscribly-parent` | 0 | 0 | 0 | 0 | 0.005s | `SUCCESS` |
-| `monolith/` | `subscribly` | **172** | **0** | **0** | **0** | 18.420s | `SUCCESS` |
-| `discovery-server/` | `discovery-server` | 0 | 0 | 0 | 0 | 0.002s | `SUCCESS` |
-| `api-gateway/` | `api-gateway` | 0 | 0 | 0 | 0 | 0.002s | `SUCCESS` |
-| `config-server/` | `config-server` | 0 | 0 | 0 | 0 | 0.002s | `SUCCESS` |
-| `common-lib/` | `common-lib` | 0 | 0 | 0 | 0 | 0.003s | `SUCCESS` |
-| `user-service/` | `user-service` | **7** | **0** | **0** | **0** | 2.841s | `SUCCESS` |
-| `notification-service/` | `notification-service` | 0 | 0 | 0 | 0 | 0.002s | `SUCCESS` |
-| `subscription-service/`| `subscription-service`| **3** | **0** | **0** | **0** | 2.115s | `SUCCESS` |
-| `payment-service/` | `payment-service` | **19** | **0** | **0** | **0** | 3.488s | `SUCCESS` |
-| **REACTOR TOTAL** | **10 Modules** | **201** | **0** | **0** | **0** | **26.88s** | **100% PASS** |
+| `.` (Root) | `subscribly-parent` | 0 | 0 | 0 | 0 | 0.003s | `SUCCESS` |
+| `monolith/` | `subscribly` | **172** | **0** | **0** | **0** | 24.795s | `SUCCESS` |
+| `discovery-server/` | `discovery-server` | 0 | 0 | 0 | 0 | 0.181s | `SUCCESS` |
+| `api-gateway/` | `api-gateway` | 0 | 0 | 0 | 0 | 0.154s | `SUCCESS` |
+| `config-server/` | `config-server` | 0 | 0 | 0 | 0 | 0.126s | `SUCCESS` |
+| `common-lib/` | `common-lib` | 0 | 0 | 0 | 0 | 0.039s | `SUCCESS` |
+| `user-service/` | `user-service` | **7** | **0** | **0** | **0** | 1.083s | `SUCCESS` |
+| `notification-service/` | `notification-service` | 0 | 0 | 0 | 0 | 0.075s | `SUCCESS` |
+| `subscription-service/`| `subscription-service`| **3** | **0** | **0** | **0** | 2.402s | `SUCCESS` |
+| `payment-service/` | `payment-service` | **23** | **0** | **0** | **0** | 2.679s | `SUCCESS` |
+| **REACTOR TOTAL** | **10 Modules** | **205** | **0** | **0** | **0** | **31.91s** | **100% PASS** |
 
 ---
 
@@ -2378,7 +2378,7 @@ Every architectural concept documented in this handbook maps directly to real so
 |                                SUBSCRIBLY ARCHITECTURE CHEAT SHEET                                |
 +===================================================================================================+
 | 1. CORE NUMBERS & METRICS:                                                                        |
-|    - 201 automated tests across 24 test suites (100% passing, 0 failures, 0 errors, 26.88s runtime).  |
+|    - 205 automated tests across 24 test suites (100% passing, 0 failures, 0 errors, 31.91s runtime).  |
 |    - 10 Maven reactor modules. Java 21 LTS + Spring Boot 3.4.3 + Spring Cloud 2024.0.0.          |
 |    - BCrypt Cost Factor 12 = 4,096 Blowfish rounds (~300ms calculation time per hash).             |
 |                                                                                                   |

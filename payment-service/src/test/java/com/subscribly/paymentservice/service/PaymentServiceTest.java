@@ -305,4 +305,111 @@ class PaymentServiceTest {
         verify(gatewayProvider, never()).verifyPaymentSignature(anyString(), anyString(), anyString());
         verify(paymentRepository, never()).save(any(Payment.class));
     }
+
+    @Test
+    @DisplayName("Webhook: Failed payment webhook event transitions payment to FAILED with retry strategy")
+    void testProcessWebhookPaymentFailedEvent() {
+        WebhookPayload failedPayload = WebhookPayload.builder()
+                .eventId("evt_fail_999")
+                .eventType("payment.failed")
+                .orderId("order_test_123")
+                .paymentId("pay_fail_111")
+                .failureReason("Insufficient funds")
+                .build();
+
+        when(webhookEventRecordRepository.existsByEventId("evt_fail_999")).thenReturn(false);
+        when(gatewayProvider.verifyWebhookSignature("raw_payload", "valid_sig")).thenReturn(true);
+        when(paymentRepository.findByGatewayOrderId("order_test_123")).thenReturn(Optional.of(testPayment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        boolean result = paymentService.processWebhook("raw_payload", "valid_sig", failedPayload);
+
+        assertTrue(result);
+        assertEquals(PaymentStatus.FAILED, testPayment.getStatus());
+        assertEquals(1, testPayment.getRetryCount());
+        assertEquals("Insufficient funds", testPayment.getFailureReason());
+        assertNotNull(testPayment.getNextRetryAt());
+        verify(paymentRepository, times(1)).save(testPayment);
+        verify(auditService, times(1)).recordTransition(
+                eq(1L), eq("PAY-REF-TEST001"), eq(PaymentStatus.CREATED), eq(PaymentStatus.FAILED),
+                anyString(), eq("WEBHOOK")
+        );
+    }
+
+    @Test
+    @DisplayName("Webhook: Webhook with unmapped order ID safely acknowledges without error")
+    void testProcessWebhookUnknownOrderId() {
+        WebhookPayload unmappedPayload = WebhookPayload.builder()
+                .eventId("evt_unmapped_001")
+                .eventType("payment.captured")
+                .orderId("order_non_existent")
+                .paymentId("pay_001")
+                .build();
+
+        when(webhookEventRecordRepository.existsByEventId("evt_unmapped_001")).thenReturn(false);
+        when(gatewayProvider.verifyWebhookSignature("raw_payload", "valid_sig")).thenReturn(true);
+        when(paymentRepository.findByGatewayOrderId("order_non_existent")).thenReturn(Optional.empty());
+
+        boolean result = paymentService.processWebhook("raw_payload", "valid_sig", unmappedPayload);
+
+        assertTrue(result);
+        verify(webhookEventRecordRepository, times(1)).save(any(WebhookEventRecord.class));
+        verify(paymentRepository, never()).save(any(Payment.class));
+    }
+
+    @Test
+    @DisplayName("Verify: Non-existent order ID throws RuntimeException")
+    void testVerifyPaymentOrderNotFound() {
+        VerifyPaymentRequest request = VerifyPaymentRequest.builder()
+                .orderId("order_ghost")
+                .paymentId("pay_ghost")
+                .signature("sig_ghost")
+                .build();
+
+        when(paymentRepository.findByGatewayOrderId("order_ghost")).thenReturn(Optional.empty());
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () ->
+                paymentService.verifyPayment("alice@example.com", request));
+
+        assertTrue(ex.getMessage().contains("Payment order not found"));
+        verify(gatewayProvider, never()).verifyPaymentSignature(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Order: Create order defaults amount and currency from subscription when omitted")
+    void testCreateOrderDefaultsPriceAndCurrency() {
+        CreateOrderRequest request = CreateOrderRequest.builder()
+                .subscriptionId(100L)
+                .amount(null)
+                .currency(null)
+                .build();
+
+        UserDto userDto = UserDto.builder()
+                .id(10L)
+                .email("alice@example.com")
+                .fullName("Alice")
+                .roles(java.util.List.of("ROLE_USER"))
+                .build();
+        SubscriptionDto subscriptionDto = SubscriptionDto.builder()
+                .id(100L)
+                .userId(10L)
+                .plan("ENTERPRISE")
+                .price(499.00)
+                .status("ACTIVE")
+                .billingCycle("YEARLY")
+                .build();
+
+        when(userClient.getUserByEmail("alice@example.com")).thenReturn(userDto);
+        when(subscriptionClient.getSubscriptionById(100L)).thenReturn(subscriptionDto);
+        when(gatewayProvider.createOrder(anyString(), eq(499.00), eq("INR")))
+                .thenReturn(new GatewayOrderResponse("order_default_cur", 499.00, "INR", "created"));
+        when(gatewayProvider.getProviderName()).thenReturn("Razorpay");
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PaymentResponse response = paymentService.createOrder("alice@example.com", request);
+
+        assertNotNull(response);
+        assertEquals(499.00, response.getAmount());
+        assertEquals("INR", response.getCurrency());
+    }
 }

@@ -50,6 +50,7 @@ class SubscriptionServiceTest {
                 .email("user@example.com")
                 .fullName("Test User")
                 .build();
+        subscriptionService.setSimulationEnabled(true);
     }
 
     @Test
@@ -64,7 +65,7 @@ class SubscriptionServiceTest {
 
         SubscriptionRequest req = SubscriptionRequest.builder()
                 .plan("PRO")
-                .price(49.99)
+                .price(java.math.BigDecimal.valueOf(49.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .autoRenew(true)
                 .build();
@@ -74,7 +75,7 @@ class SubscriptionServiceTest {
         assertNotNull(response);
         assertEquals(100L, response.getId());
         assertEquals("PRO", response.getPlan());
-        assertEquals(49.99, response.getPrice());
+        assertEquals(java.math.BigDecimal.valueOf(49.99).setScale(2, java.math.RoundingMode.HALF_UP), response.getPrice());
         assertEquals(SubscriptionStatus.ACTIVE, response.getStatus());
         assertEquals(SubscriptionStatus.ACTIVE, response.getEffectiveStatus());
         assertTrue(response.isActive());
@@ -95,7 +96,7 @@ class SubscriptionServiceTest {
                 .id(10L)
                 .user(testUser)
                 .plan("ENTERPRISE")
-                .price(99.0)
+                .price(java.math.BigDecimal.valueOf(99.00))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .startedAt(now.minus(15, ChronoUnit.DAYS))
@@ -129,7 +130,7 @@ class SubscriptionServiceTest {
                 .id(20L)
                 .user(testUser)
                 .plan("BASIC")
-                .price(9.99)
+                .price(java.math.BigDecimal.valueOf(9.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE) // DB column still says ACTIVE!
                 .startedAt(now.minus(30, ChronoUnit.DAYS))
@@ -201,7 +202,7 @@ class SubscriptionServiceTest {
                 .id(50L)
                 .user(testUser)
                 .plan("PRO")
-                .price(49.99)
+                .price(java.math.BigDecimal.valueOf(49.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .expiresAt(currentExpiry)
@@ -220,7 +221,7 @@ class SubscriptionServiceTest {
         assertEquals(999L, payment.getId());
         assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
         assertTrue(payment.isAutoRenew());
-        assertEquals(49.99, payment.getAmount());
+        assertEquals(java.math.BigDecimal.valueOf(49.99).setScale(2, java.math.RoundingMode.HALF_UP), payment.getAmount().setScale(2, java.math.RoundingMode.HALF_UP));
 
         // Subscription must have updated expiry date in future and active status
         assertEquals(SubscriptionStatus.ACTIVE, sub.getStatus());
@@ -237,7 +238,7 @@ class SubscriptionServiceTest {
                 .id(51L)
                 .user(testUser)
                 .plan("PRO")
-                .price(49.99)
+                .price(java.math.BigDecimal.valueOf(49.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .expiresAt(now.minus(1, ChronoUnit.SECONDS))
@@ -253,6 +254,29 @@ class SubscriptionServiceTest {
     }
 
     @Test
+    @DisplayName("Simulation Hardening: createAutoRenewPaymentForSubscription fails closed without extending when simulation disabled")
+    void testCreateAutoRenewPaymentFailsClosedWhenSimulationDisabled() {
+        subscriptionService.setSimulationEnabled(false);
+        Instant now = Instant.now();
+        Subscription sub = Subscription.builder()
+                .id(52L)
+                .user(testUser)
+                .plan("PRO")
+                .price(java.math.BigDecimal.valueOf(49.99))
+                .billingCycle(BillingCycle.MONTHLY)
+                .status(SubscriptionStatus.ACTIVE)
+                .expiresAt(now.minus(10, ChronoUnit.SECONDS))
+                .autoRenew(true)
+                .build();
+
+        Payment payment = subscriptionService.createAutoRenewPaymentForSubscription(sub);
+
+        assertNull(payment, "No payment should be simulated when simulation is disabled");
+        assertEquals(SubscriptionStatus.EXPIRED, sub.getStatus(), "Expired subscription must transition to EXPIRED");
+        verify(paymentRepository, never()).save(any(Payment.class));
+    }
+
+    @Test
     @DisplayName("createAutoRenewPaymentForSubscription returns existing payment on idempotent retry without double extending")
     void testCreateAutoRenewPaymentIdempotentHit() {
         Instant now = Instant.now();
@@ -262,7 +286,7 @@ class SubscriptionServiceTest {
                 .id(55L)
                 .user(testUser)
                 .plan("PRO")
-                .price(49.99)
+                .price(java.math.BigDecimal.valueOf(49.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .expiresAt(currentExpiry)
@@ -273,7 +297,7 @@ class SubscriptionServiceTest {
                 .id(888L)
                 .idempotencyKey("renew-sub-55-" + currentExpiry.getEpochSecond())
                 .status(PaymentStatus.SUCCESS)
-                .amount(49.99)
+                .amount(java.math.BigDecimal.valueOf(49.99))
                 .build();
 
         when(paymentRepository.findByIdempotencyKey(anyString())).thenReturn(Optional.of(existingPayment));
@@ -319,7 +343,7 @@ class SubscriptionServiceTest {
                 .id(58L)
                 .user(testUser)
                 .plan("PRO")
-                .price(49.99)
+                .price(java.math.BigDecimal.valueOf(49.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .expiresAt(currentExpiry)
@@ -329,7 +353,7 @@ class SubscriptionServiceTest {
         Payment winningPayment = Payment.builder()
                 .id(999L)
                 .status(PaymentStatus.SUCCESS)
-                .amount(49.99)
+                .amount(java.math.BigDecimal.valueOf(49.99))
                 .build();
 
         // First check returns empty, simulating concurrent race condition

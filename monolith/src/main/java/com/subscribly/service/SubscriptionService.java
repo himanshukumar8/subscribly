@@ -28,6 +28,13 @@ public class SubscriptionService {
     private final SubscriptionRepository subscriptionRepository;
     private final PaymentRepository paymentRepository;
 
+    @org.springframework.beans.factory.annotation.Value("${subscribly.payments.simulation-enabled:false}")
+    private boolean simulationEnabled = false;
+
+    public void setSimulationEnabled(boolean simulationEnabled) {
+        this.simulationEnabled = simulationEnabled;
+    }
+
     /**
      * Create new subscription with exact startedAt and expiresAt timestamps.
      */
@@ -43,7 +50,9 @@ public class SubscriptionService {
         Instant expiresAt = now.atZone(ZoneOffset.UTC).plusMonths(cycle.getMonths()).toInstant();
 
         String plan = (req.getPlan() != null && !req.getPlan().isBlank()) ? req.getPlan().trim() : "PRO";
-        Double price = (req.getPrice() != null && req.getPrice() >= 0) ? req.getPrice() : 49.99;
+        java.math.BigDecimal price = (req.getPrice() != null && req.getPrice().compareTo(java.math.BigDecimal.ZERO) >= 0)
+                ? req.getPrice().setScale(2, java.math.RoundingMode.HALF_UP)
+                : java.math.BigDecimal.valueOf(49.99).setScale(2, java.math.RoundingMode.HALF_UP);
 
         Subscription subscription = Subscription.builder()
                 .user(user)
@@ -220,6 +229,17 @@ public class SubscriptionService {
             log.info("[SubscriptionService] Subscription id={} has autoRenew=false. Marking EXPIRED.", subscription.getId());
             subscription.setStatus(SubscriptionStatus.EXPIRED);
             subscriptionRepository.save(subscription);
+            return null;
+        }
+
+        // Live recurring payments requirement: Auto-renewal cannot execute without recurring authorization/mandate.
+        // If simulation is not explicitly enabled, fail closed without granting free entitlement.
+        if (!simulationEnabled) {
+            log.warn("[SubscriptionService] createAutoRenewPaymentForSubscription invoked with simulation disabled. Off-session recurring payment mandates are unconfigured in current environment. Refusing simulated renewal for subscription id={}", subscription.getId());
+            if (subscription.isExpired(now)) {
+                subscription.setStatus(SubscriptionStatus.EXPIRED);
+                subscriptionRepository.save(subscription);
+            }
             return null;
         }
 

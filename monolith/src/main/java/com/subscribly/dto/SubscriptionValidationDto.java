@@ -15,7 +15,7 @@ public class SubscriptionValidationDto {
     private Long subscriptionId;
     private String userEmail;
     private String plan;
-    private Double price;
+    private java.math.BigDecimal price;
     private BillingCycle billingCycle;
     private SubscriptionStatus persistedStatus;
     private SubscriptionStatus effectiveStatus;

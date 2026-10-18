@@ -29,7 +29,8 @@ public class Subscription {
 
     private String plan;
 
-    private Double price;
+    @Column(name = "price", nullable = false, precision = 12, scale = 2)
+    private java.math.BigDecimal price;
 
     @Enumerated(EnumType.STRING)
     private BillingCycle billingCycle;

@@ -12,10 +12,10 @@
 
 | Verification Layer | Test Suite / Framework | Total Items | Passed | Failed | Errors | Skipped | Status | Evidence Reference |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Backend Reactor Tests** | JUnit 5 / Surefire (10 Modules) | **205** | **205** | **0** | **0** | **0** | **PASSED** | Surefire Reports (`target/surefire-reports`) |
-| **Postman / Newman Tests** | Newman 6.2.3 / Local Disposable DB | **36 requests / 61 assertions** | **61** | **0** | **0** | **0** | **PASSED** | `postman/Subscribly.postman_collection.json` |
-| **Frontend Production Build** | Vite 8.2.0 + TypeScript 5.x | **1869 modules** | **1869** | **0** | **0** | **0** | **PASSED** | `frontend/dist` (built in 10.81s) |
-| **Database Migrations** | Flyway 10.x against clean Postgres | **4 migrations (V1..V4)** | **4** | **0** | **0** | **0** | **PASSED** | `DatabaseMigrationIntegrationTest` |
+| **Backend Reactor Tests** | JUnit 5 / Surefire (10 Modules) | **227** | **227** | **0** | **0** | **0** | **PASSED** | Surefire Reports (`target/surefire-reports`, 28 XML files) |
+| **Postman / Newman Tests** | Newman 6.2.3 / Local Disposable DB | **36 requests / 61 assertions** | **61** | **0** | **0** | **0** | **PASSED** | `postman/Subscribly.postman_collection.json` (3.8s runtime) |
+| **Frontend Production Build** | Vite 8.2.0 + TypeScript 5.x | **1869 modules** | **1869** | **0** | **0** | **0** | **PASSED** | `frontend/dist` (built in 1.26s) |
+| **Database Migrations** | Flyway 10.x against clean Postgres | **5 migrations (V1..V5)** | **5** | **0** | **0** | **0** | **PASSED** | `FlywayMigrationVerificationTest` (NUMERIC(12,2) verified) |
 | **End-to-End Payment Flow** | Gateway Order -> Webhook Capture | **Complete E2E cycle** | **Verified** | **0** | **0** | **0** | **PASSED** | `PaymentLifecycleIntegrationTest` |
 
 ---

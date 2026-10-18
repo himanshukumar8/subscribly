@@ -11,7 +11,7 @@ public class CreatePaymentOrderResponse {
 
     private String paymentReference;
     private String gatewayOrderId;
-    private Double amount;
+    private java.math.BigDecimal amount;
     private String currency;
     private String keyId;
     private String provider;

@@ -16,7 +16,7 @@ public class SubscriptionResponse {
     private Long id;
     private String plan;
     private String serviceName; // alias for plan
-    private Double price;
+    private java.math.BigDecimal price;
     private BillingCycle billingCycle;
     private SubscriptionStatus status;
     private SubscriptionStatus effectiveStatus;

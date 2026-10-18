@@ -33,7 +33,7 @@ public class WebhookPayload {
     private String paymentId;
 
     @JsonProperty("amount")
-    private Double amount;
+    private java.math.BigDecimal amount;
 
     @JsonProperty("currency")
     private String currency;
@@ -109,20 +109,22 @@ public class WebhookPayload {
         return null;
     }
 
-    public Double resolveAmount() {
+    public java.math.BigDecimal resolveAmount() {
         if (amount != null) {
-            return amount;
+            return amount.setScale(2, java.math.RoundingMode.HALF_UP);
         }
         if (payloadNode != null && payloadNode.has("payment") && payloadNode.get("payment").has("entity")) {
             JsonNode entity = payloadNode.get("payment").get("entity");
             if (entity.has("amount")) {
-                return entity.get("amount").asDouble();
+                long minorUnits = entity.get("amount").asLong();
+                return java.math.BigDecimal.valueOf(minorUnits).divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             }
         }
         if (payloadNode != null && payloadNode.has("order") && payloadNode.get("order").has("entity")) {
             JsonNode entity = payloadNode.get("order").get("entity");
             if (entity.has("amount")) {
-                return entity.get("amount").asDouble();
+                long minorUnits = entity.get("amount").asLong();
+                return java.math.BigDecimal.valueOf(minorUnits).divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             }
         }
         return null;

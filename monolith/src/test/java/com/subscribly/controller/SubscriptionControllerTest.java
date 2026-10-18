@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -48,7 +49,7 @@ class SubscriptionControllerTest {
                 .subscriptionId(1L)
                 .userEmail("alice@example.com")
                 .plan("PRO")
-                .price(29.99)
+                .price(BigDecimal.valueOf(29.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .persistedStatus(SubscriptionStatus.ACTIVE)
                 .effectiveStatus(SubscriptionStatus.ACTIVE)
@@ -126,7 +127,7 @@ class SubscriptionControllerTest {
     void testCreateSubscriptionEndpoint() throws Exception {
         SubscriptionRequest request = SubscriptionRequest.builder()
                 .plan("ENTERPRISE")
-                .price(99.0)
+                .price(BigDecimal.valueOf(99.0))
                 .billingCycle(BillingCycle.YEARLY)
                 .autoRenew(true)
                 .email("bob@example.com")
@@ -135,7 +136,7 @@ class SubscriptionControllerTest {
         SubscriptionResponse response = SubscriptionResponse.builder()
                 .id(5L)
                 .plan("ENTERPRISE")
-                .price(99.0)
+                .price(BigDecimal.valueOf(99.0))
                 .billingCycle(BillingCycle.YEARLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .effectiveStatus(SubscriptionStatus.ACTIVE)
@@ -161,7 +162,7 @@ class SubscriptionControllerTest {
     void testCreateSubscriptionUnauthenticatedReturns401() throws Exception {
         SubscriptionRequest request = SubscriptionRequest.builder()
                 .plan("ENTERPRISE")
-                .price(99.0)
+                .price(BigDecimal.valueOf(99.0))
                 .email("bob@example.com")
                 .build();
 
@@ -176,7 +177,7 @@ class SubscriptionControllerTest {
     void testCreateSubscriptionMismatchedEmailReturns403() throws Exception {
         SubscriptionRequest request = SubscriptionRequest.builder()
                 .plan("ENTERPRISE")
-                .price(99.0)
+                .price(BigDecimal.valueOf(99.0))
                 .email("victim@example.com")
                 .build();
 
@@ -193,7 +194,7 @@ class SubscriptionControllerTest {
         SubscriptionResponse res = SubscriptionResponse.builder()
                 .id(1L)
                 .plan("BASIC")
-                .price(9.99)
+                .price(BigDecimal.valueOf(9.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .effectiveStatus(SubscriptionStatus.ACTIVE)

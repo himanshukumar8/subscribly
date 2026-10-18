@@ -178,16 +178,16 @@ SELECT event_id, event_type, status FROM webhook_events;
 
 ### A. Exact Test Totals by Module
 - `subscribly-parent`: POM (0 tests)
-- `monolith` (`subscribly`): **166 tests passed** (44.62s)
+- `monolith` (`subscribly`): **188 tests passed** (Surefire XML reports reconciled, 0 failures, 0 errors)
 - `discovery-server`: 0 tests
 - `api-gateway`: 0 tests
 - `config-server`: 0 tests
 - `common-lib`: 0 tests
-- `user-service`: **6 tests passed** (`JwtUtilTest`: 6)
+- `user-service`: **7 tests passed** (`JwtUtilTest`: 6, `UserControllerTest`: 1)
 - `notification-service`: 0 tests
-- `subscription-service`: **10 tests passed** (`JwtUtilTest`: 6, `SubscriptionServiceTest`: 4)
+- `subscription-service`: **9 tests passed** (`JwtUtilTest`: 6, `SubscriptionServiceTest`: 3)
 - `payment-service`: **23 tests passed** (`RazorpayGatewayProviderTest`: 4, `PaymentServiceTest`: 13, `JwtUtilTest`: 6)
-- **Total Reactor Tests:** **205 passed, 0 failures, 0 errors, 0 skipped** (`BUILD SUCCESS`).
+- **Total Reactor Tests:** **227 passed, 0 failures, 0 errors, 0 skipped** (`BUILD SUCCESS`).
 
 ### B. Documented Operational Limitations (Honest Reporting)
 1. **Live Distributed Multi-Process Orchestration:**
@@ -201,15 +201,18 @@ SELECT event_id, event_type, status FROM webhook_events;
 
 ## 6. Auto-Renewal and Retry Processing Implementation Analysis
 
-Inspection of `SubscriptionScheduler.java`, `SubscriptionService.java`, and `PaymentService.java` reveals the following architectural design:
-- `SubscriptionScheduler` invokes `subscriptionService.createAutoRenewPaymentForSubscription(s)` for due subscriptions, directly recording a `SUCCESS` payment ledger record and advancing `expiresAt`.
-- For failed/retrying payments, `SubscriptionScheduler` calls `paymentService.retryPayment(p, now, true, null, DEFAULT_BASE_BACKOFF)`. Notice that `simulateSuccess: true` is hardcoded.
-- `SubscriptionService.processPayment(Payment payment)` returns `payment != null && payment.getStatus() == PaymentStatus.SUCCESS`.
-- **Conclusion:** Auto-renewal and retry processing in the monolith currently function as an **internal ledger / state-machine simulator** rather than an off-session live Razorpay e-Mandate (recurring debit tokenization) integration. This is documented transparently as intended for staging simulation without live merchant recurring credentials.
+Inspection of `SubscriptionScheduler.java`, `SubscriptionService.java`, and `PaymentService.java` reflects the completed security hardening:
+- **Simulation Control:** Controlled via `subscribly.payments.simulation-enabled` (`PAYMENT_SIMULATION_ENABLED: false` default in live profiles).
+- **Scheduler Auto-Renew:** `SubscriptionScheduler` checks `simulationEnabled`. When simulation is disabled in live environments, auto-renew sweep transitions expired subscriptions to `EXPIRED` status without granting false entitlement or fake ledger success. When simulation is explicitly enabled (test/disposable environments), simulation executes safely.
+- **Manual Payment Gate:** `paymentService.makePayment()` guards direct simulation requests, rejecting with `IllegalStateException` when simulation is disabled.
+- **Payment Retry Safeguard:** `paymentService.retryPayment()` passes `simulationEnabled`, executing bounded exponential backoff failing closed to `FAILED` with entitlement revoked after 3 retries.
+- **Off-Session Recurring Reality:** Real automated recurring debits on cards/UPI mandate UPI Autopay / e-Mandate tokenization. In the absence of an active merchant recurring mandate credential, Subscribly transparently classifies auto-renewal as unsupported in live mode, avoiding false claims of recurring payment processing.
 
 ---
 
 ## 7. Financial Precision and Schema Integrity
 
-- **Monetary Amounts:** Entities `Payment.amount` and `Subscription.price` use Java `Double` and PostgreSQL `DOUBLE PRECISION`. In the gateway integration (`RazorpayGatewayProvider.java`), amounts are safely converted to minor currency units (paise/cents) via `Math.round(amount * 100.0)`. For enterprise banking grade precision, migrating to `BigDecimal` with `DECIMAL(12, 2)` is recommended for future financial expansion.
+- **Monetary Precision Migration:** Entities `Payment.amount` and `Subscription.price` have been completely migrated from floating-point `Double` to `BigDecimal` with `@Column(precision = 12, scale = 2)`.
+- **Database Schema (Flyway V5):** Migration `V5__migrate_monetary_to_numeric.sql` alters `subscriptions.price` and `payments.amount` to `NUMERIC(12,2) USING ROUND(col::numeric, 2)` and introduces PostgreSQL check constraints `CHECK (price >= 0)` and `CHECK (amount >= 0)`.
+- **Gateway Unit Conversion:** Gateway minor unit conversion is handled strictly via integer cents/paise: `amount.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact()`.
 - **Constraints & Indexes:** Verified that `uk_payment_idempotency_key`, `uk_payment_gateway_order_id`, and `uk_webhook_event_id` enforce database-level uniqueness, preventing duplicate financial transactions under race conditions.

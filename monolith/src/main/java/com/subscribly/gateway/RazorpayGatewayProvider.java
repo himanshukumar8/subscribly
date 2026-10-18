@@ -125,8 +125,8 @@ public class RazorpayGatewayProvider implements PaymentGatewayProvider {
     }
 
     @Override
-    public GatewayOrderResponse createOrder(String paymentReference, Double amount, String currency) {
-        if (amount == null || amount <= 0) {
+    public GatewayOrderResponse createOrder(String paymentReference, java.math.BigDecimal amount, String currency) {
+        if (amount == null || amount.compareTo(java.math.BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Payment order amount must be greater than zero");
         }
 
@@ -135,20 +135,21 @@ public class RazorpayGatewayProvider implements PaymentGatewayProvider {
         }
 
         String resolvedCurrency = (currency != null && !currency.isBlank()) ? currency.trim().toUpperCase(Locale.ROOT) : "INR";
+        java.math.BigDecimal scaledAmount = amount.setScale(2, java.math.RoundingMode.HALF_UP);
         // Razorpay API expects amount in the currency's smallest subunit (paise for INR, cents for USD)
-        long amountInMinorUnits = Math.round(amount * 100.0);
+        long amountInMinorUnits = scaledAmount.multiply(java.math.BigDecimal.valueOf(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValueExact();
 
         log.info("[RazorpayGateway] Order initiation for reference: {}, amount: {} {} (minor units: {})",
-                paymentReference, amount, resolvedCurrency, amountInMinorUnits);
+                paymentReference, scaledAmount, resolvedCurrency, amountInMinorUnits);
 
         if (liveCallEnabled) {
             // Real Gateway Mode: strictly executes live API call; fails fast on error, NEVER silently mocks
-            return executeLiveOrdersApiCall(paymentReference, amount, amountInMinorUnits, resolvedCurrency);
+            return executeLiveOrdersApiCall(paymentReference, scaledAmount, amountInMinorUnits, resolvedCurrency);
         } else {
             // Explicit Offline Simulation Mode: applies identical validation and returns deterministic sandbox order
             String sandboxOrderId = "order_sandbox_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
             log.info("[RazorpayGateway] Offline simulation order generated: {}", sandboxOrderId);
-            return new GatewayOrderResponse(sandboxOrderId, amount, resolvedCurrency, "created", keyId);
+            return new GatewayOrderResponse(sandboxOrderId, scaledAmount, resolvedCurrency, "created", keyId);
         }
     }
 
@@ -158,7 +159,7 @@ public class RazorpayGatewayProvider implements PaymentGatewayProvider {
      */
     public GatewayOrderResponse executeLiveOrdersApiCall(
             String paymentReference,
-            Double originalAmount,
+            java.math.BigDecimal originalAmount,
             long amountInMinorUnits,
             String currency
     ) {

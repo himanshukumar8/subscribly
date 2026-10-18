@@ -20,7 +20,7 @@ public class SubscriptionRequest {
 
     @JsonProperty("price")
     @JsonAlias({"amount"})
-    private Double price;               // price of the plan
+    private java.math.BigDecimal price;               // price of the plan
 
     private BillingCycle billingCycle;  // MONTHLY, QUARTERLY, YEARLY
     private Boolean autoRenew;          // defaults to true if null

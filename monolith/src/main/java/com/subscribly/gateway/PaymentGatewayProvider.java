@@ -2,7 +2,7 @@ package com.subscribly.gateway;
 
 public interface PaymentGatewayProvider {
 
-    GatewayOrderResponse createOrder(String paymentReference, Double amount, String currency);
+    GatewayOrderResponse createOrder(String paymentReference, java.math.BigDecimal amount, String currency);
 
     boolean verifyWebhookSignature(String payload, String signatureHeader);
 

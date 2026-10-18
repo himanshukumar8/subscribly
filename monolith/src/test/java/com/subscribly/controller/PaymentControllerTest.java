@@ -41,7 +41,7 @@ class PaymentControllerTest {
         Payment payment = Payment.builder()
                 .id(1L)
                 .idempotencyKey(key)
-                .amount(29.99)
+                .amount(java.math.BigDecimal.valueOf(29.99))
                 .status(PaymentStatus.SUCCESS)
                 .attempts(1)
                 .build();
@@ -72,7 +72,7 @@ class PaymentControllerTest {
     void testGetMyPaymentsAuthenticated() throws Exception {
         Payment payment = Payment.builder()
                 .id(5L)
-                .amount(49.99)
+                .amount(java.math.BigDecimal.valueOf(49.99))
                 .status(PaymentStatus.SUCCESS)
                 .build();
 
@@ -100,7 +100,7 @@ class PaymentControllerTest {
         CreatePaymentOrderResponse orderResponse = CreatePaymentOrderResponse.builder()
                 .paymentReference("PAY-REF-ABC-123")
                 .gatewayOrderId("order_rzp_test_456")
-                .amount(49.99)
+                .amount(java.math.BigDecimal.valueOf(49.99))
                 .currency("INR")
                 .keyId("rzp_test_key")
                 .provider("RAZORPAY")

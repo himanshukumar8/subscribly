@@ -2,6 +2,7 @@ package com.subscribly.controller;
 
 import com.subscribly.dto.CreatePaymentOrderRequest;
 import com.subscribly.dto.CreatePaymentOrderResponse;
+import com.subscribly.dto.PaymentResponse;
 import com.subscribly.entity.Payment;
 import com.subscribly.service.PaymentService;
 import jakarta.validation.Valid;
@@ -95,30 +96,35 @@ public class PaymentController {
      * Maintained for internal testing/simulation, separate from verified gateway webhooks.
      */
     @PostMapping("/pay/{subscriptionId}")
-    public Payment makePayment(
+    public PaymentResponse makePayment(
             @PathVariable Long subscriptionId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             Principal principal
     ) {
         String authenticatedEmail = requireAuthenticatedEmail(principal);
-        return paymentService.makePayment(subscriptionId, authenticatedEmail, idempotencyKey);
+        Payment payment = paymentService.makePayment(subscriptionId, authenticatedEmail, idempotencyKey);
+        return PaymentResponse.fromEntity(payment);
     }
 
     /**
      * USER: Get payments for logged-in user
      */
     @GetMapping("/my")
-    public List<Payment> getMyPayments(Principal principal) {
+    public List<PaymentResponse> getMyPayments(Principal principal) {
         String authenticatedEmail = requireAuthenticatedEmail(principal);
-        return paymentService.getPaymentsByUser(authenticatedEmail);
+        return paymentService.getPaymentsByUser(authenticatedEmail).stream()
+                .map(PaymentResponse::fromEntity)
+                .toList();
     }
 
     /**
      * ADMIN: Get all payments in the system
      */
     @GetMapping("/all")
-    public List<Payment> getAllPayments() {
-        return paymentService.getAllPayments();
+    public List<PaymentResponse> getAllPayments() {
+        return paymentService.getAllPayments().stream()
+                .map(PaymentResponse::fromEntity)
+                .toList();
     }
 
     private String requireAuthenticatedEmail(Principal principal) {

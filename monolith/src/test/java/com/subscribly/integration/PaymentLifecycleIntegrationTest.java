@@ -158,7 +158,7 @@ public class PaymentLifecycleIntegrationTest {
         // 3. Create Subscription via actual API using authenticated JWT
         SubscriptionRequest subRequest = SubscriptionRequest.builder()
                 .plan("PREMIUM")
-                .price(49.99)
+                .price(java.math.BigDecimal.valueOf(49.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .autoRenew(true)
                 .build();
@@ -214,7 +214,7 @@ public class PaymentLifecycleIntegrationTest {
         Payment persistedPayment = paymentRepository.findByGatewayOrderId(realGatewayOrderId)
                 .orElseThrow(() -> new AssertionError("Payment must be persisted with gatewayOrderId"));
         assertEquals(PaymentStatus.PENDING, persistedPayment.getStatus());
-        assertEquals(49.99, persistedPayment.getAmount(), 0.001);
+        assertEquals(java.math.BigDecimal.valueOf(49.99).setScale(2, java.math.RoundingMode.HALF_UP), persistedPayment.getAmount().setScale(2, java.math.RoundingMode.HALF_UP));
         assertEquals("INR", persistedPayment.getCurrency());
 
         // 6. Build genuine webhook payload accepted by WebhookPayload
@@ -317,7 +317,7 @@ public class PaymentLifecycleIntegrationTest {
         MvcResult subResult = mockMvc.perform(post("/api/v1/subscription/create")
                         .header("Authorization", aliceHeader)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new SubscriptionRequest("BASIC", 19.99, BillingCycle.MONTHLY, true, null))))
+                        .content(objectMapper.writeValueAsString(new SubscriptionRequest("BASIC", java.math.BigDecimal.valueOf(19.99), BillingCycle.MONTHLY, true, null))))
                 .andExpect(status().isOk())
                 .andReturn();
         Long subId = objectMapper.readValue(subResult.getResponse().getContentAsString(), SubscriptionResponse.class).getId();
@@ -393,7 +393,7 @@ public class PaymentLifecycleIntegrationTest {
         // Create subscription
         SubscriptionRequest subRequest = SubscriptionRequest.builder()
                 .plan("STANDARD")
-                .price(29.99)
+                .price(java.math.BigDecimal.valueOf(29.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .build();
 

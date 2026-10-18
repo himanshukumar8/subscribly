@@ -67,7 +67,7 @@ class PaymentGatewayWebhookTest {
                 .id(50L)
                 .user(testUser)
                 .plan("STANDARD")
-                .price(49.99)
+                .price(java.math.BigDecimal.valueOf(49.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .startedAt(start)
@@ -83,7 +83,7 @@ class PaymentGatewayWebhookTest {
                 .user(testUser)
                 .idempotencyKey("PAY-REF-XYZ-12345")
                 .gatewayOrderId("order_test_987654321")
-                .amount(49.99)
+                .amount(java.math.BigDecimal.valueOf(49.99))
                 .currency("INR")
                 .provider("RAZORPAY")
                 .status(PaymentStatus.PENDING)
@@ -97,8 +97,8 @@ class PaymentGatewayWebhookTest {
     void testCreatePaymentOrderSuccess() {
         when(subscriptionRepository.findById(50L)).thenReturn(Optional.of(testSubscription));
         when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
-        when(gatewayProvider.createOrder(any(), eq(49.99), eq("INR")))
-                .thenReturn(new GatewayOrderResponse("order_rzp_mock123", 49.99, "INR", "created", "rzp_test_key"));
+        when(gatewayProvider.createOrder(any(), eq(java.math.BigDecimal.valueOf(49.99)), eq("INR")))
+                .thenReturn(new GatewayOrderResponse("order_rzp_mock123", java.math.BigDecimal.valueOf(49.99), "INR", "created", "rzp_test_key"));
         when(gatewayProvider.getProviderName()).thenReturn("RAZORPAY");
         when(paymentRepository.save(any(Payment.class))).thenAnswer(i -> {
             Payment p = i.getArgument(0);
@@ -113,7 +113,7 @@ class PaymentGatewayWebhookTest {
         assertNotNull(response);
         assertEquals("order_rzp_mock123", response.getGatewayOrderId());
         assertEquals("my-unique-order-key", response.getPaymentReference());
-        assertEquals(49.99, response.getAmount());
+        assertEquals(java.math.BigDecimal.valueOf(49.99).setScale(2, java.math.RoundingMode.HALF_UP), response.getAmount().setScale(2, java.math.RoundingMode.HALF_UP));
         assertEquals("PENDING", response.getStatus());
 
         verify(paymentRepository, times(1)).save(any(Payment.class));

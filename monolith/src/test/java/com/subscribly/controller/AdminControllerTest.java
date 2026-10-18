@@ -16,6 +16,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -46,7 +47,7 @@ class AdminControllerTest {
                 .id(1L)
                 .plan("PRO")
                 .status(SubscriptionStatus.ACTIVE)
-                .price(29.99)
+                .price(BigDecimal.valueOf(29.99))
                 .build();
         when(subscriptionService.getAllSubscriptions()).thenReturn(List.of(sub));
 

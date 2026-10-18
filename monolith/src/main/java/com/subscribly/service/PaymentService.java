@@ -45,6 +45,13 @@ public class PaymentService {
     private final WebhookEventService webhookEventService;
     private final ObjectMapper objectMapper;
 
+    @org.springframework.beans.factory.annotation.Value("${subscribly.payments.simulation-enabled:false}")
+    private boolean simulationEnabled = false;
+
+    public void setSimulationEnabled(boolean simulationEnabled) {
+        this.simulationEnabled = simulationEnabled;
+    }
+
     /**
      * Calculates exponential backoff duration based on attempt number:
      * Attempt 1 -> baseInterval * 1 (2^0)
@@ -71,6 +78,10 @@ public class PaymentService {
 
     @Transactional
     public Payment makePayment(Long subscriptionId, String email, String idempotencyKey) {
+        if (!simulationEnabled) {
+            log.warn("[PaymentService] Manual payment simulated flow rejected: payment simulation is disabled in this environment.");
+            throw new IllegalStateException("Direct simulated manual payments are disabled in this environment. Use gateway order and webhook flow.");
+        }
         return processPaymentAttempt(subscriptionId, email, idempotencyKey, true, null, DEFAULT_BASE_BACKOFF);
     }
 
@@ -113,7 +124,7 @@ public class PaymentService {
             // Validate payload consistency (subscriptionId, user email, amount)
             boolean subMatches = p.getSubscription() != null && p.getSubscription().getId().equals(subscriptionId);
             boolean userMatches = p.getUser() != null && p.getUser().getEmail().equalsIgnoreCase(email);
-            boolean amountMatches = p.getAmount() != null && Math.abs(p.getAmount() - subscription.getPrice()) < 0.001;
+            boolean amountMatches = p.getAmount() != null && subscription.getPrice() != null && p.getAmount().compareTo(subscription.getPrice()) == 0;
 
             if (!subMatches || !userMatches || !amountMatches) {
                 log.error("[PaymentService] Idempotency key conflict: key={} already used with different parameters.", idempotencyKey);
@@ -262,7 +273,7 @@ public class PaymentService {
             String transactionReference,
             Long subscriptionId,
             String email,
-            double amount,
+            java.math.BigDecimal amount,
             Instant processedAt
     ) {
         if (transactionReference == null || transactionReference.isBlank()) {
@@ -280,7 +291,7 @@ public class PaymentService {
             throw new IllegalStateException("Cannot process payment for a CANCELLED subscription.");
         }
 
-        if (Math.abs(subscription.getPrice() - amount) > 0.001) {
+        if (amount == null || subscription.getPrice() == null || subscription.getPrice().compareTo(amount) != 0) {
             log.error("[PaymentService] Gateway payment amount mismatch: expected={}, received={}",
                     subscription.getPrice(), amount);
             throw new IllegalArgumentException("Verified amount does not match subscription price");
@@ -343,8 +354,8 @@ public class PaymentService {
 
         int count = 0;
         for (Payment payment : duePayments) {
-            // Process payment retry (real gateway invocation in production, simulation here)
-            retryPayment(payment, now, true, null, DEFAULT_BASE_BACKOFF);
+            // Process payment retry using configured simulation flag
+            retryPayment(payment, now, simulationEnabled, simulationEnabled ? null : "Simulated retry success disabled", DEFAULT_BASE_BACKOFF);
             count++;
         }
         return count;
@@ -391,7 +402,7 @@ public class PaymentService {
             // Validate payload consistency (subscriptionId, user email, amount, currency)
             boolean subMatches = p.getSubscription() != null && p.getSubscription().getId().equals(subscriptionId);
             boolean userMatches = p.getUser() != null && p.getUser().getEmail().equalsIgnoreCase(email);
-            boolean amountMatches = p.getAmount() != null && Math.abs(p.getAmount() - subscription.getPrice()) < 0.001;
+            boolean amountMatches = p.getAmount() != null && subscription.getPrice() != null && p.getAmount().compareTo(subscription.getPrice()) == 0;
             boolean currencyMatches = p.getCurrency() != null && p.getCurrency().equalsIgnoreCase(currency);
 
             if (!subMatches || !userMatches || !amountMatches || !currencyMatches) {
@@ -531,7 +542,7 @@ public class PaymentService {
         }
 
         // 5. Amount & Currency Verification
-        Double receivedAmount = payload.resolveAmount();
+        java.math.BigDecimal receivedAmount = payload.resolveAmount();
         String receivedCurrency = payload.resolveCurrency();
 
         String lowerEventType = eventType.toLowerCase(Locale.ROOT);
@@ -540,7 +551,7 @@ public class PaymentService {
         boolean isFailureEvent = lowerEventType.contains("failed") || lowerEventType.contains("error");
 
         if (isSuccessEvent) {
-            if (receivedAmount == null || receivedAmount <= 0) {
+            if (receivedAmount == null || receivedAmount.compareTo(java.math.BigDecimal.ZERO) <= 0) {
                 log.error("[PaymentService] Webhook payload missing payment amount or non-positive amount for orderId={}", orderId);
                 String failureReason = "Webhook payload missing payment amount or non-positive amount";
                 payment.setStatus(PaymentStatus.FAILED);
@@ -549,10 +560,13 @@ public class PaymentService {
                 throw new IllegalArgumentException(failureReason);
             }
 
-            double expectedAmount = payment.getAmount() != null ? payment.getAmount() : subscription.getPrice();
+            java.math.BigDecimal expectedAmount = payment.getAmount() != null ? payment.getAmount() : subscription.getPrice();
             // Supports both normalized units (49.99) and minor currency units (paise/cents, e.g. 4999)
-            boolean amountMatches = Math.abs(expectedAmount - receivedAmount) < 0.01
-                    || Math.abs(expectedAmount * 100 - receivedAmount) < 0.01;
+            boolean amountMatches = (expectedAmount != null) && (
+                    expectedAmount.compareTo(receivedAmount) == 0
+                    || expectedAmount.multiply(java.math.BigDecimal.valueOf(100)).compareTo(receivedAmount) == 0
+                    || (expectedAmount.scale() >= 2 && expectedAmount.divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP).compareTo(receivedAmount) == 0)
+            );
 
             if (!amountMatches) {
                 log.error("[PaymentService] Payment amount mismatch: expected={}, received={}", expectedAmount, receivedAmount);

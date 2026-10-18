@@ -15,6 +15,10 @@
 | `DEF-02` | **HIGH** | `monolith` (Entity Serialization) | `InvalidDefinitionException` on Hibernate ByteBuddy lazy proxy serialization in `Payment`, `Subscription`, and `User` | **RESOLVED** | Newman requests 21, 22, 23, 35, 36 (100% Pass) |
 | `DEF-03` | **MEDIUM** | `monolith` (`SubscriptionRequest`) | Missing Jackson `@JsonAlias` and unhandled PostgreSQL NOT NULL constraint on `plan` / `price` | **RESOLVED** | Newman request 12 & `SubscriptionServiceTest` (100% Pass) |
 | `DEF-04` | **HIGH** | `monolith` (Admin Bootstrapping) | Initial administrator absence on fresh databases prevented admin login and administrative operations | **RESOLVED** | Newman requests 31, 32, 33, 34 & `SubscriblyApplicationTests` (100% Pass) |
+| `DEF-05` | **CRITICAL** | `monolith` (Admin Security) | Insecure default password (`Password@123`), silent bootstrap in prod, and recreation of deactivated admins | **RESOLVED** | `AdminBootstrapSecurityTest` (6 tests) & Newman Auth suite |
+| `DEF-06` | **CRITICAL** | `monolith` / `db` (Financial Precision) | Floating-point `Double`/`DOUBLE PRECISION` usage across entities, DTOs, and database tables risking financial drift | **RESOLVED** | Flyway `V5`, `MonetaryPrecisionFinancialTest` (5 tests), Surefire |
+| `DEF-07` | **HIGH** | `monolith` (Payment Simulation) | Hardcoded `simulateSuccess = true` in scheduler auto-renewal sweep and manual payment pathways | **RESOLVED** | `PaymentSimulationSecurityTest` (4 tests), fail-closed enforcement |
+| `DEF-08` | **HIGH** | `monolith` (API Architecture) | Controllers returning JPA entities directly, exposing internal proxy state, password hashes, and schema internals | **RESOLVED** | `PaymentResponse` DTO, `PaymentResponseDtoTest` (2 tests), Newman |
 
 ---
 
@@ -126,11 +130,104 @@
 
 ---
 
+### DEF-05: Insecure Default Administrator Provisioning and Lifecycle Violation
+
+- **Date Discovered:** 2026-10-18
+- **Affected Artifacts:**
+  - `monolith/src/main/java/com/subscribly/config/AdminBootstrapConfig.java`
+  - `monolith/src/main/java/com/subscribly/repository/UserRepository.java`
+- **Severity:** **CRITICAL** (Privilege Escalation / Default Credential Exposure)
+- **Symptom:**
+  Fresh database initialization previously defaulted to predictable publicly documented credentials (`admin1@example.com` / `Password@123`). Furthermore, restarting the application when all admins were intentionally deactivated or deleted caused `countActiveAdministrators() == 0` to trigger recreation, violating administrative intent.
+- **Root Cause Analysis:**
+  Bootstrap was active by default without operator opt-in. Passwords lacked entropy validation, permitted dictionary tokens, and runner execution was coupled to class-level transactional annotations that poisoned application context on failure.
+- **Remediation:**
+  1. Made bootstrap explicitly opt-in: `subscribly.security.admin-bootstrap.enabled: false`.
+  2. Mandated high-entropy password validation: length >= 12 characters, non-blank, prohibiting common dictionary words (`password`, `admin`, `123456`, `changeme`, `subscribly`).
+  3. Added lifecycle protection via `userRepository.countAllAdministratorsEver()`, ensuring bootstrap NEVER recreates an admin if any administrator account ever existed in database history.
+  4. Executed inside isolated `TransactionTemplate.execute()`, ensuring zero outer rollback pollution.
+  5. Masked credentials in all logging and audit events.
+- **Regression Verification:**
+  - `AdminBootstrapSecurityTest` (6 automated regression tests passing).
+  - Live Newman administrative suite (Requests 30..34, 100% Pass).
+
+---
+
+### DEF-06: Floating-Point Binary Precision Drift in Monetary Entities and Schema
+
+- **Date Discovered:** 2026-10-18
+- **Affected Artifacts:**
+  - `monolith/src/main/resources/db/migration/V5__migrate_monetary_to_numeric.sql`
+  - `monolith/src/main/java/com/subscribly/entity/Subscription.java`
+  - `monolith/src/main/java/com/subscribly/entity/Payment.java`
+  - `monolith/src/main/java/com/subscribly/dto/` (`SubscriptionRequest`, `SubscriptionResponse`, `CreatePaymentOrderResponse`, `WebhookPayload`)
+  - `monolith/src/main/java/com/subscribly/gateway/` (`PaymentGatewayProvider`, `RazorpayGatewayProvider`)
+- **Severity:** **CRITICAL** (Financial Ledger Inaccuracy)
+- **Symptom:**
+  `price` and `amount` fields used IEEE 754 floating-point `Double` in Java and `DOUBLE PRECISION` in PostgreSQL. Binary floating-point representation introduces cumulative rounding drift (e.g. `0.1 + 0.2 != 0.3`) across billing sweeps, prorations, and ledger reconciliation.
+- **Root Cause Analysis:**
+  Initial prototype schema utilized native double types without monetary scale and rounding constraints.
+- **Remediation:**
+  1. Author Flyway migration `V5__migrate_monetary_to_numeric.sql`, using `TYPE NUMERIC(12,2) USING ROUND(price::numeric, 2)` and adding `CHECK (price >= 0)` and `CHECK (amount >= 0)` constraints.
+  2. Migrated all Java monetary fields to `BigDecimal` with `@Column(precision = 12, scale = 2)`.
+  3. Enforced explicit rounding with `RoundingMode.HALF_UP` and exact minor unit integer conversion (`multiply(100).setScale(0, HALF_UP).longValueExact()`) at the gateway boundary.
+- **Regression Verification:**
+  - `MonetaryPrecisionFinancialTest` (5 tests covering `0.10`, `49.99`, rounding boundaries, non-negative validation).
+  - `FlywayMigrationVerificationTest` (`testUpgradeFromV4ToV5PreservesMonetaryValues` passing).
+
+---
+
+### DEF-07: Unconditional Simulated Payment Success in Production Paths
+
+- **Date Discovered:** 2026-10-18
+- **Affected Artifacts:**
+  - `monolith/src/main/java/com/subscribly/scheduler/SubscriptionScheduler.java`
+  - `monolith/src/main/java/com/subscribly/service/SubscriptionService.java`
+  - `monolith/src/main/java/com/subscribly/service/PaymentService.java`
+  - `monolith/src/main/resources/application.yml`
+- **Severity:** **HIGH** (False Financial Entitlement)
+- **Symptom:**
+  Scheduled auto-renew sweep called `createAutoRenewPaymentForSubscription(sub, true)` with hardcoded `simulateSuccess = true`. Any due subscription was marked successfully renewed and extended by 30 days without contacting a gateway.
+- **Root Cause Analysis:**
+  Development simulation logic was hardcoded in production paths without environment boundary guards.
+- **Remediation:**
+  1. Injected opt-in configuration property `subscribly.payments.simulation-enabled` (`PAYMENT_SIMULATION_ENABLED: false`).
+  2. When simulation is disabled in live/production mode:
+     - Scheduler auto-renew sweep transitions expired subscriptions to `EXPIRED` without granting entitlement or false ledger records.
+     - Manual `/pay` endpoint immediately throws `IllegalStateException`.
+     - Payment retries execute bounded exponential backoff failing closed to `FAILED`.
+- **Regression Verification:**
+  - `PaymentSimulationSecurityTest` (4 automated regression tests passing).
+
+---
+
+### DEF-08: Direct JPA Entity Exposure in Controller Endpoints
+
+- **Date Discovered:** 2026-10-18
+- **Affected Artifacts:**
+  - `monolith/src/main/java/com/subscribly/dto/PaymentResponse.java`
+  - `monolith/src/main/java/com/subscribly/controller/PaymentController.java`
+  - `monolith/src/main/java/com/subscribly/controller/InternalMonolithController.java`
+- **Severity:** **HIGH** (Information Disclosure & Serialization Vulnerability)
+- **Symptom:**
+  `PaymentController` and `InternalMonolithController` returned raw `Payment` and `Subscription` entity objects, risking serialization of internal Hibernate ByteBuddy proxies, user password hashes, and database-specific identifiers.
+- **Root Cause Analysis:**
+  Absence of a dedicated `PaymentResponse` DTO layer in the monolith payment subsystem.
+- **Remediation:**
+  1. Created explicit `PaymentResponse` DTO with backward-compatible aliases (`getPaymentReference()`, `getRetryCount()`) and static mapping helper `PaymentResponse.fromEntity(Payment)`.
+  2. Replaced all controller entity return types with `ResponseEntity<PaymentResponse>` and `List<PaymentResponse>`.
+  3. Isolated sensitive user properties, password hashes, and Hibernate lazy proxy state.
+- **Regression Verification:**
+  - `PaymentResponseDtoTest` (2 unit tests verifying password isolation and JSON schema parity).
+  - Newman requests 21, 22, 23, 35, 36 (100% Pass).
+
+---
+
 ## 3. Verification Defect Metrics
 
 ```
-Total Defects Discovered: 4
-Total Defects Remediated: 4
+Total Defects Discovered: 8
+Total Defects Remediated: 8
 Unresolved Defects: 0
-Regression Test Pass Rate: 100% (205/205 Maven, 61/61 Newman assertions)
+Regression Test Pass Rate: 100% (227/227 Maven, 61/61 Newman assertions, 1869/1869 Frontend modules)
 ```

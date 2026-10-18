@@ -23,6 +23,7 @@ class RazorpayGatewayProviderTest {
     private static final String KEY_ID = "rzp_test_testKey123";
     private static final String KEY_SECRET = "rzp_test_secretKeyABC";
     private static final String WEBHOOK_SECRET = "rzp_test_webhookSecretXYZ";
+    private static final java.math.BigDecimal TEST_AMOUNT = java.math.BigDecimal.valueOf(49.99);
 
     @BeforeEach
     void setUp() {
@@ -32,12 +33,12 @@ class RazorpayGatewayProviderTest {
     @Test
     @DisplayName("Create Order (Offline Simulation): generates valid Razorpay order ID prefixed with 'order_'")
     void testCreateOrderOfflineSimulation() {
-        GatewayOrderResponse response = provider.createOrder("REF-12345", 49.99, "INR");
+        GatewayOrderResponse response = provider.createOrder("REF-12345", TEST_AMOUNT, "INR");
 
         assertNotNull(response);
         assertNotNull(response.orderId());
         assertTrue(response.orderId().startsWith("order_"));
-        assertEquals(49.99, response.amount());
+        assertEquals(TEST_AMOUNT.setScale(2, java.math.RoundingMode.HALF_UP), response.amount());
         assertEquals("INR", response.currency());
         assertEquals("created", response.status());
         assertEquals(KEY_ID, response.keyId());
@@ -46,8 +47,8 @@ class RazorpayGatewayProviderTest {
     @Test
     @DisplayName("Create Order: rejects non-positive amounts with IllegalArgumentException")
     void testCreateOrderRejectsNonPositiveAmount() {
-        assertThrows(IllegalArgumentException.class, () -> provider.createOrder("REF-1", 0.0, "INR"));
-        assertThrows(IllegalArgumentException.class, () -> provider.createOrder("REF-2", -10.0, "INR"));
+        assertThrows(IllegalArgumentException.class, () -> provider.createOrder("REF-1", java.math.BigDecimal.ZERO, "INR"));
+        assertThrows(IllegalArgumentException.class, () -> provider.createOrder("REF-2", java.math.BigDecimal.valueOf(-10.0), "INR"));
         assertThrows(IllegalArgumentException.class, () -> provider.createOrder("REF-3", null, "INR"));
     }
 
@@ -74,11 +75,11 @@ class RazorpayGatewayProviderTest {
         provider.setHttpClient(mockHttpClient);
         provider.setLiveCallEnabled(true);
 
-        GatewayOrderResponse response = provider.createOrder("REF-LIVE-1", 49.99, "INR");
+        GatewayOrderResponse response = provider.createOrder("REF-LIVE-1", TEST_AMOUNT, "INR");
 
         assertNotNull(response);
         assertEquals("order_live_rzp_99999", response.orderId());
-        assertEquals(49.99, response.amount());
+        assertEquals(TEST_AMOUNT.setScale(2, java.math.RoundingMode.HALF_UP), response.amount());
         assertEquals("INR", response.currency());
         assertEquals("created", response.status());
         assertEquals(KEY_ID, response.keyId());
@@ -118,7 +119,7 @@ class RazorpayGatewayProviderTest {
         provider.setLiveCallEnabled(true);
 
         PaymentGatewayException ex = assertThrows(PaymentGatewayException.class, () ->
-                provider.createOrder("REF-ERR-1", 0.50, "INR")
+                provider.createOrder("REF-ERR-1", java.math.BigDecimal.valueOf(0.50), "INR")
         );
 
         assertTrue(ex.getMessage().contains("Order amount is less than minimum allowable amount"));
@@ -136,7 +137,7 @@ class RazorpayGatewayProviderTest {
         provider.setLiveCallEnabled(true);
 
         PaymentGatewayException ex = assertThrows(PaymentGatewayException.class, () ->
-                provider.createOrder("REF-TIMEOUT-1", 49.99, "INR")
+                provider.createOrder("REF-TIMEOUT-1", TEST_AMOUNT, "INR")
         );
 
         assertTrue(ex.getMessage().contains("timeout"));
@@ -154,7 +155,7 @@ class RazorpayGatewayProviderTest {
         provider.setLiveCallEnabled(true);
 
         PaymentGatewayException ex = assertThrows(PaymentGatewayException.class, () ->
-                provider.createOrder("REF-IO-1", 49.99, "INR")
+                provider.createOrder("REF-IO-1", TEST_AMOUNT, "INR")
         );
 
         assertTrue(ex.getMessage().contains("Network error"));
@@ -167,7 +168,7 @@ class RazorpayGatewayProviderTest {
         placeholderProvider.setLiveCallEnabled(true);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-                placeholderProvider.createOrder("REF-NO-CREDS", 49.99, "INR")
+                placeholderProvider.createOrder("REF-NO-CREDS", TEST_AMOUNT, "INR")
         );
 
         assertTrue(ex.getMessage().contains("RAZORPAY_KEY_ID is missing or set to placeholder"));
@@ -239,7 +240,7 @@ class RazorpayGatewayProviderTest {
         provider.setLiveCallEnabled(true);
 
         PaymentGatewayException ex = assertThrows(PaymentGatewayException.class, () ->
-                provider.createOrder("REF-MALFORMED", 49.99, "INR")
+                provider.createOrder("REF-MALFORMED", TEST_AMOUNT, "INR")
         );
 
         assertTrue(ex.getMessage().contains("Malformed JSON"));
@@ -268,7 +269,7 @@ class RazorpayGatewayProviderTest {
         provider.setLiveCallEnabled(true);
 
         PaymentGatewayException ex = assertThrows(PaymentGatewayException.class, () ->
-                provider.createOrder("REF-MISMATCH", 49.99, "INR")
+                provider.createOrder("REF-MISMATCH", TEST_AMOUNT, "INR")
         );
 
         assertTrue(ex.getMessage().contains("mismatched amount"));
@@ -297,7 +298,7 @@ class RazorpayGatewayProviderTest {
         provider.setLiveCallEnabled(true);
 
         PaymentGatewayException ex = assertThrows(PaymentGatewayException.class, () ->
-                provider.createOrder("REF-CURR-MISMATCH", 49.99, "INR")
+                provider.createOrder("REF-CURR-MISMATCH", TEST_AMOUNT, "INR")
         );
 
         assertTrue(ex.getMessage().contains("mismatched currency"));
@@ -319,10 +320,10 @@ class RazorpayGatewayProviderTest {
     @DisplayName("Create Order: Rejects invalid currency code formatting")
     void testCreateOrderRejectsInvalidCurrency() {
         assertThrows(IllegalArgumentException.class, () ->
-                provider.createOrder("REF-CURR", 49.99, "INVALID_CODE")
+                provider.createOrder("REF-CURR", TEST_AMOUNT, "INVALID_CODE")
         );
         assertThrows(IllegalArgumentException.class, () ->
-                provider.createOrder("REF-CURR", 49.99, "12")
+                provider.createOrder("REF-CURR", TEST_AMOUNT, "12")
         );
     }
 
@@ -332,7 +333,7 @@ class RazorpayGatewayProviderTest {
         RazorpayGatewayProvider offlineProvider = new RazorpayGatewayProvider("rzp_live_abc12345", "secret_live_xyz98765", "webhook_sec");
         offlineProvider.setLiveCallEnabled(false);
 
-        GatewayOrderResponse response = offlineProvider.createOrder("REF-OFFLINE-EXPLICIT", 49.99, "INR");
+        GatewayOrderResponse response = offlineProvider.createOrder("REF-OFFLINE-EXPLICIT", TEST_AMOUNT, "INR");
         assertNotNull(response);
         assertTrue(response.orderId().startsWith("order_sandbox_"));
         assertFalse(offlineProvider.isLiveCallEnabled());
@@ -345,7 +346,7 @@ class RazorpayGatewayProviderTest {
         noKeyIdProvider.setLiveCallEnabled(true);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-                noKeyIdProvider.createOrder("REF-NO-KEYID", 49.99, "INR")
+                noKeyIdProvider.createOrder("REF-NO-KEYID", TEST_AMOUNT, "INR")
         );
         assertTrue(ex.getMessage().contains("RAZORPAY_KEY_ID is missing or set to placeholder"));
     }
@@ -357,7 +358,7 @@ class RazorpayGatewayProviderTest {
         noSecretProvider.setLiveCallEnabled(true);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-                noSecretProvider.createOrder("REF-NO-SECRET", 49.99, "INR")
+                noSecretProvider.createOrder("REF-NO-SECRET", TEST_AMOUNT, "INR")
         );
         assertTrue(ex.getMessage().contains("RAZORPAY_KEY_SECRET is missing or set to placeholder"));
     }
@@ -371,7 +372,7 @@ class RazorpayGatewayProviderTest {
         placeholderProvider.setLiveCallEnabled(true);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-                placeholderProvider.createOrder("REF-PLACEHOLDER", 49.99, "INR")
+                placeholderProvider.createOrder("REF-PLACEHOLDER", TEST_AMOUNT, "INR")
         );
         assertTrue(ex.getMessage().contains("RAZORPAY_KEY_ID is missing or set to placeholder"));
     }
@@ -383,7 +384,7 @@ class RazorpayGatewayProviderTest {
         noWebhookSecProvider.setLiveCallEnabled(true);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-                noWebhookSecProvider.createOrder("REF-NO-WEBHOOKSEC", 49.99, "INR")
+                noWebhookSecProvider.createOrder("REF-NO-WEBHOOKSEC", TEST_AMOUNT, "INR")
         );
         assertTrue(ex.getMessage().contains("RAZORPAY_WEBHOOK_SECRET is missing or set to placeholder"));
 
@@ -391,7 +392,7 @@ class RazorpayGatewayProviderTest {
         placeholderWebhookSecProvider.setLiveCallEnabled(true);
 
         IllegalStateException ex2 = assertThrows(IllegalStateException.class, () ->
-                placeholderWebhookSecProvider.createOrder("REF-PH-WEBHOOKSEC", 49.99, "INR")
+                placeholderWebhookSecProvider.createOrder("REF-PH-WEBHOOKSEC", TEST_AMOUNT, "INR")
         );
         assertTrue(ex2.getMessage().contains("RAZORPAY_WEBHOOK_SECRET is missing or set to placeholder"));
     }
@@ -429,7 +430,7 @@ class RazorpayGatewayProviderTest {
         );
 
         PaymentGatewayException ex = assertThrows(PaymentGatewayException.class, () ->
-                liveProvider.createOrder("REF-FAIL-NO-FALLBACK", 49.99, "INR")
+                liveProvider.createOrder("REF-FAIL-NO-FALLBACK", TEST_AMOUNT, "INR")
         );
 
         assertTrue(ex.getMessage().contains("Internal Server Error on Razorpay"));

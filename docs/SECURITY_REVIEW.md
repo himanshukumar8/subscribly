@@ -124,6 +124,29 @@ Subscribly implements a defense-in-depth security posture designed to enforce au
   - Forged signatures or missing headers are rejected with HTTP `400 Bad Request`.
   - Verified live in Newman suite (Requests 24, 26, 27).
 
+### G. Administrator Provisioning & Bootstrap Hardening
+- **Configuration Boundary:**
+  - Administrator bootstrapping is explicitly opt-in: `subscribly.security.admin-bootstrap.enabled: false`. In production or unconfigured environments, zero privileged accounts are automatically seeded.
+  - Password entropy enforcement: Password must be supplied externally via `SUBSCRIBLY_SECURITY_ADMIN_BOOTSTRAP_PASSWORD`. Must be >= 12 characters and free of dictionary/predictable patterns (`password`, `admin`, `123456`, `changeme`, `subscribly`).
+- **Lifecycle & Tamper Safeguard:**
+  - Checks `userRepository.countAllAdministratorsEver()`. If any admin account ever existed (even if later deleted or deactivated), bootstrap aborts cleanly to preserve intentional security states.
+  - Public registration (`/api/v1/auth/register`) strictly assigns `ROLE_USER` only; `ROLE_ADMIN` cannot be self-assigned.
+- **Log Masking:** Logs explicitly mask all credentials and record only audit status.
+
+### H. Payment Simulation Boundary & Fail-Closed Enforcement
+- **Opt-In Safety:**
+  - Governed by `subscribly.payments.simulation-enabled` (`PAYMENT_SIMULATION_ENABLED: false` by default).
+  - Hardcoded `simulateSuccess = true` paths have been eliminated from `SubscriptionScheduler` and `PaymentService`.
+- **Fail-Closed Policy:**
+  - Direct manual simulated payment requests fail with `IllegalStateException` when simulation is disabled.
+  - In auto-renewal sweeps, expired subscriptions transition to `EXPIRED` status without granting false entitlement or false ledger entries.
+  - Retries execute bounded exponential backoff failing closed to `FAILED` with entitlement revoked after 3 failed attempts.
+
+### I. Entity Response Isolation & DTO Boundary
+- **Information Disclosure Prevention:**
+  - Controllers no longer return raw Hibernate JPA entities (`Payment`, `Subscription`).
+  - Dedicated DTO `PaymentResponse` prevents serialization of Hibernate ByteBuddy lazy proxies, user password hashes, and schema internals.
+
 ---
 
 ## 3. Analysis of Historical Credential Exposure & Remediation
@@ -158,14 +181,20 @@ During earlier prototype development on legacy commits, a default development JW
 | `SEC-01` | **LOW** | Information Disclosure | Actuator `/actuator/health` exposes component details when `management.endpoint.health.show-details: always` | **ACCEPTED (DEV)** | In production profile (`application-prod.yml`), set `show-details: never` or restrict actuator access to internal monitoring CIDRs. |
 | `SEC-02` | **MEDIUM** | Network Boundary | `/api/v1/internal/**` endpoints permit unauthenticated access within the local network | **BY DESIGN** | Currently designed for service-to-service communication behind API Gateway. When deploying in Kubernetes, restrict internal routes via Istio Mutual TLS (mTLS) or NetworkPolicies. |
 | `SEC-03` | **INFO** | Credential Exposure | Legacy development Git commits contain historical mock test credentials | **RESOLVED** | Environment externalization verified; production deployment uses injected vault secrets with rotation. |
+| `SEC-04` | **CRITICAL** | Default Provisioning | Prior default admin password in `AdminBootstrapConfig` risked default credential takeover | **RESOLVED** | Enforced opt-in flag, 12+ character entropy validation, dictionary token rejection, and lifecycle check. |
+| `SEC-05` | **HIGH** | Financial Correctness | Hardcoded simulation success in scheduler auto-renewal sweep created false entitlements | **RESOLVED** | Extracted `PAYMENT_SIMULATION_ENABLED` flag; fails closed to `EXPIRED` status without live gateway mandate. |
 
 ---
 
 ## 5. Security Regression Verification
 
-All security mechanisms were verified against both the automated test reactor and the live Newman API collection:
+All security mechanisms were verified against both the automated test reactor (227 tests) and the live Newman API collection (61 assertions):
 - **BCrypt Hashing:** Verified by `AuthControllerTest` and live registration.
 - **JWT Malformed / Expired Rejection:** Verified by `JwtUtilTest` (6 tests) and Newman Request 11.
 - **RBAC Admin Enforcement:** Verified by `AdminControllerTest` and Newman Request 30 (403 Forbidden).
+- **Admin Bootstrap Security:** Verified by `AdminBootstrapSecurityTest` (6 tests).
+- **Payment Simulation Fail-Closed:** Verified by `PaymentSimulationSecurityTest` (4 tests).
 - **Cross-User Ownership Checks:** Verified by Newman Requests 13, 15, 28 (403 Forbidden).
 - **HMAC Webhook Verification:** Verified by `PaymentLifecycleIntegrationTest` and Newman Requests 24, 26, 27 (Valid 200, Forged 400).
+- **Financial Precision:** Verified by `MonetaryPrecisionFinancialTest` (5 tests) and Flyway `V5` schema verification.
+- **Entity Response Isolation:** Verified by `PaymentResponseDtoTest` (2 tests) and Newman Requests 21, 22, 23, 35, 36.

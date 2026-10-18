@@ -57,7 +57,7 @@ class FlywayMigrationVerificationTest {
 
     @Test
     @Order(1)
-    @DisplayName("Disposable Empty DB: V1, V2, V3, V4 migrations execute in order and record success")
+    @DisplayName("Disposable Empty DB: V1, V2, V3, V4, V5 migrations execute in order and record success")
     void testEmptyDatabaseMigrationAndOrdering() {
         Flyway flyway = Flyway.configure()
                 .dataSource(EMPTY_DB_URL, DB_USER, DB_PASSWORD)
@@ -65,7 +65,7 @@ class FlywayMigrationVerificationTest {
                 .load();
 
         MigrationInfo[] applied = flyway.info().applied();
-        assertEquals(4, applied.length, "All 4 migrations (V1, V2, V3, V4) must be applied");
+        assertEquals(5, applied.length, "All 5 migrations (V1, V2, V3, V4, V5) must be applied");
 
         assertEquals("1", applied[0].getVersion().getVersion());
         assertEquals("initial schema", applied[0].getDescription());
@@ -82,6 +82,10 @@ class FlywayMigrationVerificationTest {
         assertEquals("4", applied[3].getVersion().getVersion());
         assertEquals("persist user active status", applied[3].getDescription());
         assertTrue(applied[3].getState().isApplied());
+
+        assertEquals("5", applied[4].getVersion().getVersion());
+        assertEquals("migrate monetary to numeric", applied[4].getDescription());
+        assertTrue(applied[4].getState().isApplied());
     }
 
     @Test
@@ -159,6 +163,23 @@ class FlywayMigrationVerificationTest {
             assertTrue(userColumns.contains("full_name"));
             assertTrue(userColumns.contains("password"));
             assertTrue(userColumns.contains("active"));
+
+            // 5. Verify monetary columns migrated to NUMERIC(12,2)
+            try (ResultSet rs = stmt.executeQuery(
+                    "SELECT data_type, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_name = 'subscriptions' AND column_name = 'price'")) {
+                assertTrue(rs.next(), "Column subscriptions.price must exist");
+                assertEquals("numeric", rs.getString("data_type").toLowerCase());
+                assertEquals(12, rs.getInt("numeric_precision"));
+                assertEquals(2, rs.getInt("numeric_scale"));
+            }
+
+            try (ResultSet rs = stmt.executeQuery(
+                    "SELECT data_type, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'amount'")) {
+                assertTrue(rs.next(), "Column payments.amount must exist");
+                assertEquals("numeric", rs.getString("data_type").toLowerCase());
+                assertEquals(12, rs.getInt("numeric_precision"));
+                assertEquals(2, rs.getInt("numeric_scale"));
+            }
         }
     }
 
@@ -242,12 +263,13 @@ class FlywayMigrationVerificationTest {
         assertTrue(result.success, "Incremental migration must succeed");
 
         MigrationInfo[] applied = flyway.info().applied();
-        assertEquals(4, applied.length);
+        assertEquals(5, applied.length);
         assertEquals("1", applied[0].getVersion().getVersion());
         assertTrue(applied[0].getState().isApplied());
         assertEquals("2", applied[1].getVersion().getVersion());
         assertEquals("3", applied[2].getVersion().getVersion());
         assertEquals("4", applied[3].getVersion().getVersion());
+        assertEquals("5", applied[4].getVersion().getVersion());
 
         // Verify existing legacy user has active = true
         try (Connection conn = DriverManager.getConnection(BASELINE_DB_URL, DB_USER, DB_PASSWORD);
@@ -260,7 +282,7 @@ class FlywayMigrationVerificationTest {
 
     @Test
     @Order(5)
-    @DisplayName("Existing Schema Upgrade: Upgrades V3 schema to V4, backfills existing users with active=true, and validates schema")
+    @DisplayName("Existing Schema Upgrade: Upgrades V3 schema to V4 and V5, backfills existing users with active=true, and validates schema")
     void testUpgradeFromV3ToV4PreservesUsers() throws Exception {
         // Step 1: Clean and migrate baseline DB to target V3 only
         Flyway cleaner = Flyway.configure()
@@ -311,7 +333,17 @@ class FlywayMigrationVerificationTest {
             }
         }
 
-        // Step 5: Verify Hibernate ddl-auto: validate passes against this upgraded V3->V4 database
+        // Step 5: Migrate to V5 (monetary columns to NUMERIC(12,2))
+        Flyway v5Flyway = Flyway.configure()
+                .dataSource(BASELINE_DB_URL, DB_USER, DB_PASSWORD)
+                .locations("classpath:db/migration")
+                .target("5")
+                .load();
+        MigrateResult v5Result = v5Flyway.migrate();
+        assertTrue(v5Result.success, "Migration to V5 must succeed");
+        assertEquals(5, v5Flyway.info().applied().length);
+
+        // Step 6: Verify Hibernate ddl-auto: validate passes against this upgraded V5 database
         Map<String, Object> jpaProps = new HashMap<>();
         jpaProps.put("jakarta.persistence.jdbc.url", BASELINE_DB_URL);
         jpaProps.put("jakarta.persistence.jdbc.user", DB_USER);
@@ -327,12 +359,81 @@ class FlywayMigrationVerificationTest {
         emfBean.setJpaVendorAdapter(new org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter());
         emfBean.setJpaPropertyMap(jpaProps);
         emfBean.afterPropertiesSet();
-        assertNotNull(emfBean.getObject(), "Hibernate ddl-auto: validate succeeded against upgraded V4 database");
+        assertNotNull(emfBean.getObject(), "Hibernate ddl-auto: validate succeeded against upgraded V5 database");
         emfBean.destroy();
     }
 
     @Test
     @Order(6)
+    @DisplayName("Monetary Value Preservation: Upgrades V4 DOUBLE PRECISION values to V5 NUMERIC(12,2) without data loss")
+    void testUpgradeFromV4ToV5PreservesMonetaryValues() throws Exception {
+        // Clean and migrate baseline DB to target V4
+        Flyway cleaner = Flyway.configure()
+                .dataSource(BASELINE_DB_URL, DB_USER, DB_PASSWORD)
+                .cleanDisabled(false)
+                .load();
+        cleaner.clean();
+
+        Flyway v4Flyway = Flyway.configure()
+                .dataSource(BASELINE_DB_URL, DB_USER, DB_PASSWORD)
+                .locations("classpath:db/migration")
+                .target("4")
+                .load();
+        v4Flyway.migrate();
+
+        // Insert test values in V4 (0.10, 49.99, 1234.50, 0.00)
+        try (Connection conn = DriverManager.getConnection(BASELINE_DB_URL, DB_USER, DB_PASSWORD);
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("INSERT INTO users (id, full_name, email, password, active) VALUES (201, 'Finance User', 'finance@example.com', 'hash', true)");
+            stmt.execute("INSERT INTO subscriptions (id, user_id, plan, price, billing_cycle, status, auto_renew) VALUES (201, 201, 'PRO', 49.99, 'MONTHLY', 'ACTIVE', true)");
+            stmt.execute("INSERT INTO subscriptions (id, user_id, plan, price, billing_cycle, status, auto_renew) VALUES (202, 201, 'MICRO', 0.10, 'MONTHLY', 'ACTIVE', true)");
+            stmt.execute("INSERT INTO subscriptions (id, user_id, plan, price, billing_cycle, status, auto_renew) VALUES (203, 201, 'ZERO', 0.00, 'MONTHLY', 'ACTIVE', true)");
+            stmt.execute("INSERT INTO payments (id, subscription_id, user_id, amount, status, attempts, auto_renew) VALUES (201, 201, 201, 49.99, 'SUCCESS', 1, false)");
+            stmt.execute("INSERT INTO payments (id, subscription_id, user_id, amount, status, attempts, auto_renew) VALUES (202, 202, 201, 0.10, 'SUCCESS', 1, false)");
+            stmt.execute("INSERT INTO payments (id, subscription_id, user_id, amount, status, attempts, auto_renew) VALUES (203, 203, 201, -5.00, 'FAILED', 1, false)");
+        }
+
+        // Run V5 migration
+        Flyway v5Flyway = Flyway.configure()
+                .dataSource(BASELINE_DB_URL, DB_USER, DB_PASSWORD)
+                .locations("classpath:db/migration")
+                .target("5")
+                .load();
+        MigrateResult v5Result = v5Flyway.migrate();
+        assertTrue(v5Result.success, "Migration to V5 must succeed");
+
+        // Verify exact numeric values preserved
+        try (Connection conn = DriverManager.getConnection(BASELINE_DB_URL, DB_USER, DB_PASSWORD);
+             Statement stmt = conn.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery("SELECT price FROM subscriptions WHERE id = 201")) {
+                assertTrue(rs.next());
+                assertEquals(new java.math.BigDecimal("49.99"), rs.getBigDecimal("price"));
+            }
+            try (ResultSet rs = stmt.executeQuery("SELECT price FROM subscriptions WHERE id = 202")) {
+                assertTrue(rs.next());
+                assertEquals(new java.math.BigDecimal("0.10"), rs.getBigDecimal("price"));
+            }
+            try (ResultSet rs = stmt.executeQuery("SELECT price FROM subscriptions WHERE id = 203")) {
+                assertTrue(rs.next());
+                assertEquals(new java.math.BigDecimal("0.00"), rs.getBigDecimal("price"));
+            }
+            try (ResultSet rs = stmt.executeQuery("SELECT amount FROM payments WHERE id = 201")) {
+                assertTrue(rs.next());
+                assertEquals(new java.math.BigDecimal("49.99"), rs.getBigDecimal("amount"));
+            }
+            try (ResultSet rs = stmt.executeQuery("SELECT amount FROM payments WHERE id = 202")) {
+                assertTrue(rs.next());
+                assertEquals(new java.math.BigDecimal("0.10"), rs.getBigDecimal("amount"));
+            }
+            try (ResultSet rs = stmt.executeQuery("SELECT amount FROM payments WHERE id = 203")) {
+                assertTrue(rs.next());
+                assertEquals(new java.math.BigDecimal("0.00"), rs.getBigDecimal("amount"), "Legacy negative amount must be normalized to 0.00 before check constraint");
+            }
+        }
+    }
+
+    @Test
+    @Order(7)
     @DisplayName("Database-Backed Webhook Concurrency: Concurrent inserts on uk_webhook_event_id roll back sub-tx cleanly without aborting connection")
     void testDatabaseBackedWebhookConcurrency() throws Exception {
         String sharedEventId = "evt_concurrency_pg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);

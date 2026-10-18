@@ -53,6 +53,16 @@ razorpay:
 jwt:
   secret: ${JWT_SECRET:local-development-only-jwt-secret-not-for-prod-32bytes-min!}
 
+# Subscribly Platform Security & Payment Controls
+subscribly:
+  security:
+    admin-bootstrap:
+      enabled: ${ADMIN_BOOTSTRAP_ENABLED:${SUBSCRIBLY_SECURITY_ADMIN_BOOTSTRAP_ENABLED:false}}
+      email: ${ADMIN_BOOTSTRAP_EMAIL:${SUBSCRIBLY_SECURITY_ADMIN_BOOTSTRAP_EMAIL:admin1@example.com}}
+      password: ${ADMIN_BOOTSTRAP_PASSWORD:${SUBSCRIBLY_SECURITY_ADMIN_BOOTSTRAP_PASSWORD:}}
+  payments:
+    simulation-enabled: ${PAYMENT_SIMULATION_ENABLED:false}
+
 
 management:
   endpoints:

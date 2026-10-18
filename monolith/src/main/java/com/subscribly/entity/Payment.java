@@ -41,7 +41,8 @@ public class Payment {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password"})
     private User user;
 
-    private Double amount;
+    @Column(name = "amount", nullable = false, precision = 12, scale = 2)
+    private java.math.BigDecimal amount;
 
     @Builder.Default
     @Column(name = "currency", length = 10)

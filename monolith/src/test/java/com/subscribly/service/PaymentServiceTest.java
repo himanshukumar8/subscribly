@@ -17,6 +17,7 @@ import com.subscribly.gateway.PaymentGatewayProvider;
 import com.subscribly.repository.WebhookEventRepository;
 import org.mockito.Spy;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -69,7 +70,7 @@ class PaymentServiceTest {
                 .id(100L)
                 .user(testUser)
                 .plan("PRO")
-                .price(49.99)
+                .price(java.math.BigDecimal.valueOf(49.99))
                 .billingCycle(BillingCycle.MONTHLY)
                 .status(SubscriptionStatus.ACTIVE)
                 .startedAt(start)
@@ -78,6 +79,8 @@ class PaymentServiceTest {
                 .endDate(LocalDate.of(2026, 11, 1))
                 .autoRenew(true)
                 .build();
+
+        paymentService.setSimulationEnabled(true);
     }
 
     @Test
@@ -94,7 +97,7 @@ class PaymentServiceTest {
                 .idempotencyKey(key)
                 .subscription(testSubscription)
                 .user(testUser)
-                .amount(49.99)
+                .amount(java.math.BigDecimal.valueOf(49.99))
                 .status(PaymentStatus.SUCCESS)
                 .attempts(1)
                 .build();
@@ -289,7 +292,7 @@ class PaymentServiceTest {
 
         Subscription otherSub = Subscription.builder()
                 .id(200L)
-                .price(99.0)
+                .price(BigDecimal.valueOf(99.0))
                 .build();
 
         // Stored payment for this key belongs to subscription 200 with amount 99.0
@@ -298,7 +301,7 @@ class PaymentServiceTest {
                 .idempotencyKey(key)
                 .subscription(otherSub)
                 .user(testUser)
-                .amount(99.0)
+                .amount(BigDecimal.valueOf(99.0))
                 .status(PaymentStatus.SUCCESS)
                 .build();
 
@@ -376,7 +379,7 @@ class PaymentServiceTest {
         });
 
         Payment payment = paymentService.recordVerifiedGatewayPayment(
-                ref, 100L, "alice@example.com", 49.99, verifiedAt
+                ref, 100L, "alice@example.com", java.math.BigDecimal.valueOf(49.99), verifiedAt
         );
 
         assertNotNull(payment);
@@ -388,7 +391,7 @@ class PaymentServiceTest {
         when(paymentRepository.findByIdempotencyKey(ref)).thenReturn(Optional.of(payment));
 
         Payment duplicate = paymentService.recordVerifiedGatewayPayment(
-                ref, 100L, "alice@example.com", 49.99, verifiedAt
+                ref, 100L, "alice@example.com", java.math.BigDecimal.valueOf(49.99), verifiedAt
         );
 
         assertEquals(808L, duplicate.getId());
@@ -403,7 +406,7 @@ class PaymentServiceTest {
         // Subscription price is 49.99, but gateway reports 10.00
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
                 paymentService.recordVerifiedGatewayPayment(
-                        "ref-tampered-amount", 100L, "alice@example.com", 10.00, Instant.now()
+                        "ref-tampered-amount", 100L, "alice@example.com", java.math.BigDecimal.valueOf(10.00), Instant.now()
                 )
         );
 
@@ -421,6 +424,19 @@ class PaymentServiceTest {
         );
 
         assertTrue(ex.getMessage().contains("Unauthorized"));
+        verify(paymentRepository, never()).save(any(Payment.class));
+    }
+
+    @Test
+    @DisplayName("Simulation Hardening: makePayment fails closed when payment simulation is disabled")
+    void testMakePaymentFailsClosedWhenSimulationDisabled() {
+        paymentService.setSimulationEnabled(false);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                paymentService.makePayment(100L, "alice@example.com", "key-sim-disabled")
+        );
+
+        assertTrue(ex.getMessage().contains("disabled in this environment"));
         verify(paymentRepository, never()).save(any(Payment.class));
     }
 
@@ -443,7 +459,7 @@ class PaymentServiceTest {
         when(subscriptionRepository.findById(100L)).thenReturn(Optional.of(testSubscription));
 
         SecurityException ex = assertThrows(SecurityException.class, () ->
-                paymentService.recordVerifiedGatewayPayment("ref-1", 100L, "attacker@example.com", 49.99, Instant.now())
+                paymentService.recordVerifiedGatewayPayment("ref-1", 100L, "attacker@example.com", java.math.BigDecimal.valueOf(49.99), Instant.now())
         );
 
         assertTrue(ex.getMessage().contains("Unauthorized"));

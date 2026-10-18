@@ -30,6 +30,13 @@ public class SubscriptionScheduler {
     private final PaymentRepository paymentRepository;
     private final com.subscribly.service.PaymentService paymentService;
 
+    @org.springframework.beans.factory.annotation.Value("${subscribly.payments.simulation-enabled:false}")
+    private boolean simulationEnabled = false;
+
+    public void setSimulationEnabled(boolean simulationEnabled) {
+        this.simulationEnabled = simulationEnabled;
+    }
+
     @Scheduled(fixedRate = 300000)
     public void processContinuousAutoRenewals() {
 
@@ -47,7 +54,15 @@ public class SubscriptionScheduler {
             log.info("Found {} active subscriptions due for renewal.", dueSubscriptions.size());
             for (Subscription s : dueSubscriptions) {
                 log.info("Processing due subscription id {}", s.getId());
-                subscriptionService.createAutoRenewPaymentForSubscription(s);
+                if (simulationEnabled) {
+                    subscriptionService.createAutoRenewPaymentForSubscription(s);
+                } else {
+                    log.warn("Auto-renewal for subscription id={} requires recurring gateway authorization. Off-session recurring mandates are unsupported in current configuration.", s.getId());
+                    if (s.isExpired(now)) {
+                        s.setStatus(SubscriptionStatus.EXPIRED);
+                        subscriptionRepository.save(s);
+                    }
+                }
             }
         }
 
@@ -58,7 +73,13 @@ public class SubscriptionScheduler {
             log.info("Found {} payments to process.", paymentsToProcess.size());
             for (Payment p : paymentsToProcess) {
                 log.info("Processing retry for payment id={} attempt={}", p.getId(), p.getAttempts());
-                Payment retried = paymentService.retryPayment(p, now, true, null, com.subscribly.service.PaymentService.DEFAULT_BASE_BACKOFF);
+                Payment retried = paymentService.retryPayment(
+                        p,
+                        now,
+                        simulationEnabled,
+                        simulationEnabled ? null : "Live gateway retry mandate not available; simulated retry success disabled",
+                        com.subscribly.service.PaymentService.DEFAULT_BASE_BACKOFF
+                );
                 log.info("Payment id={} retried -> newStatus={}", retried.getId(), retried.getStatus());
             }
         }

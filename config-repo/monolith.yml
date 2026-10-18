@@ -1,0 +1,25 @@
+server:
+  port: 8089
+
+spring:
+  application:
+    name: monolith
+  datasource:
+    url: jdbc:postgresql://localhost:5432/subscribly
+    username: subscribly_user
+    password: 1
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+info:
+  app:
+    name: Monolith Core Service
+    description: Subscribly Legacy Core (Subscription & Payment domains pending extraction)
+    version: 1.0.0

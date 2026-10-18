@@ -35,6 +35,10 @@ spring:
     restart:
       enabled: false   # <<< IMPORTANT: disables old config reload
 
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
+
 # Payment Gateway Externalized Configuration (Sandbox Defaults with Env Overrides)
 razorpay:
   key-id: ${RAZORPAY_KEY_ID:rzp_test_mockKeyId}

@@ -42,10 +42,13 @@ public class SubscriptionService {
         BillingCycle cycle = req.getBillingCycle() != null ? req.getBillingCycle() : BillingCycle.MONTHLY;
         Instant expiresAt = now.atZone(ZoneOffset.UTC).plusMonths(cycle.getMonths()).toInstant();
 
+        String plan = (req.getPlan() != null && !req.getPlan().isBlank()) ? req.getPlan().trim() : "PRO";
+        Double price = (req.getPrice() != null && req.getPrice() >= 0) ? req.getPrice() : 49.99;
+
         Subscription subscription = Subscription.builder()
                 .user(user)
-                .plan(req.getPlan())
-                .price(req.getPrice())
+                .plan(plan)
+                .price(price)
                 .billingCycle(cycle)
                 .status(SubscriptionStatus.ACTIVE)
                 .startedAt(now)

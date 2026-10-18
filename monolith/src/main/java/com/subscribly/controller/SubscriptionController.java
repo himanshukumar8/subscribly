@@ -20,7 +20,7 @@ public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
 
-    @PostMapping("/create")
+    @PostMapping({"", "/create"})
     public SubscriptionResponse createSubscription(
             Principal principal,
             @RequestBody SubscriptionRequest req

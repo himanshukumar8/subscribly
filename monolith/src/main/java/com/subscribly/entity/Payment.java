@@ -6,6 +6,8 @@ import lombok.*;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 @Entity
 @Table(name = "payments", uniqueConstraints = {
         @UniqueConstraint(name = "uk_payment_idempotency_key", columnNames = {"idempotency_key"}),
@@ -16,6 +18,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Payment {
 
     @Id
@@ -29,11 +32,13 @@ public class Payment {
     // Subscription this payment is for
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subscription_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "user"})
     private Subscription subscription;
 
     // User this payment belongs to
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password"})
     private User user;
 
     private Double amount;
